@@ -1,123 +1,214 @@
+import io
 import os
 import re
 import requests
 from bs4 import BeautifulSoup
-from urllib.parse import urlparse
+from PIL import Image
+from urllib.parse import urlparse, unquote
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-IMAGE_DIR = os.path.join(os.path.dirname(__file__), '..', 'data', 'images')
+_IMAGE_BASE = os.path.join(os.path.dirname(__file__), '..', 'data', 'images')
 
-HEADERS = {
+_SESSION_HEADERS = {
     'User-Agent': (
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
         'AppleWebKit/537.36 (KHTML, like Gecko) '
         'Chrome/123.0.0.0 Safari/537.36'
-    )
+    ),
+    'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
 }
 
 
 class SmartStoreScraper:
 
+    def __init__(self) -> None:
+        self._session = requests.Session()
+        self._session.headers.update(_SESSION_HEADERS)
+
+    # ── 공개 API ──────────────────────────────────────────────────────────────
+
+    def validate_url(self, url: str) -> bool:
+        return 'smartstore.naver.com' in url
+
     def parse_product(self, url: str) -> dict:
-        """네이버 스마트스토어 상품 페이지에서 정보를 파싱합니다."""
-        logger.info(f'상품 페이지 파싱 시작: {url}')
-        resp = requests.get(url, headers=HEADERS, timeout=15)
-        resp.raise_for_status()
+        if not self.validate_url(url):
+            raise ValueError(f'스마트스토어 URL이 아닙니다: {url}')
+
+        logger.info(f'상품 파싱 시작: {url}')
+        try:
+            resp = self._session.get(url, timeout=15)
+            resp.raise_for_status()
+        except Exception as e:
+            logger.error(f'상품 페이지 요청 실패: {e}')
+            raise
 
         soup = BeautifulSoup(resp.text, 'lxml')
 
-        title = self._extract_title(soup)
-        price = self._extract_price(soup)
-        description = self._extract_description(soup)
-        image_urls = self._extract_image_urls(soup, url)
+        try:
+            product = {
+                'product_name':       self._product_name(soup),
+                'price':              self._price(soup),
+                'original_price':     self._original_price(soup),
+                'discount_rate':      self._discount_rate(soup),
+                'store_name':         self._store_name(soup),
+                'category':           self._category(soup),
+                'description':        self._description(soup),
+                'tags':               self._tags(soup),
+                'shipping_info':      self._shipping_info(soup),
+                'detail_image_urls':  self._detail_image_urls(soup, url),
+                'thumbnail_url':      self._thumbnail_url(soup),
+                'product_url':        url,
+            }
+        except Exception as e:
+            logger.error(f'상품 파싱 중 오류 ({url}): {e}')
+            raise
 
-        logger.info(f'파싱 완료 - 상품명: {title}, 이미지 수: {len(image_urls)}')
-        return {
-            'url': url,
-            'title': title,
-            'price': price,
-            'description': description,
-            'images': image_urls,
-        }
+        logger.info(
+            f'파싱 완료 - {product["product_name"]} | '
+            f'{product["price"]} | 이미지 {len(product["detail_image_urls"])}장'
+        )
+        return product
 
-    def download_images(self, image_urls: list[str], max_count: int = 3) -> list[str]:
-        """이미지 URL 목록에서 최대 max_count장을 로컬에 저장하고 경로 목록을 반환합니다."""
-        os.makedirs(IMAGE_DIR, exist_ok=True)
-        paths = []
-        for i, url in enumerate(image_urls[:max_count]):
+    def download_images(self, image_urls: list, product_name: str) -> list[str]:
+        safe_name = re.sub(r'[\\/*?:"<>|]', '_', product_name)[:50]
+        save_dir = os.path.join(_IMAGE_BASE, safe_name)
+        os.makedirs(save_dir, exist_ok=True)
+
+        paths: list[str] = []
+        for i, url in enumerate(image_urls[:3]):
             try:
-                resp = requests.get(url, headers=HEADERS, timeout=10)
+                resp = self._session.get(url, timeout=10)
                 resp.raise_for_status()
-                ext = self._guess_ext(url)
-                filename = f'img_{i}{ext}'
-                path = os.path.join(IMAGE_DIR, filename)
-                with open(path, 'wb') as f:
-                    f.write(resp.content)
+
+                # Pillow 유효성 검사
+                img = Image.open(io.BytesIO(resp.content))
+                img.verify()
+
+                # verify() 후 다시 열어야 저장 가능
+                img = Image.open(io.BytesIO(resp.content))
+                ext = img.format.lower() if img.format else 'jpg'
+                ext = 'jpg' if ext == 'jpeg' else ext
+                filename = f'{i:02d}.{ext}'
+                path = os.path.join(save_dir, filename)
+                img.save(path)
                 paths.append(path)
-                logger.info(f'이미지 다운로드: {filename}')
+                logger.info(f'이미지 저장: {path}')
             except Exception as e:
                 logger.warning(f'이미지 다운로드 실패 ({url}): {e}')
+
         return paths
 
-    # ── 내부 파싱 헬퍼 ────────────────────────────────────────────────────────
+    # ── 파싱 헬퍼 ─────────────────────────────────────────────────────────────
 
-    def _extract_title(self, soup: BeautifulSoup) -> str:
-        tag = soup.find('h3', {'class': re.compile(r'productName', re.I)})
+    def _product_name(self, soup: BeautifulSoup) -> str:
+        for sel in [
+            ('h3', re.compile(r'productName', re.I)),
+            ('h2', re.compile(r'product.*name|title', re.I)),
+        ]:
+            tag = soup.find(sel[0], {'class': sel[1]})
+            if tag:
+                return tag.get_text(strip=True)
+        og = soup.find('meta', {'property': 'og:title'})
+        return og['content'].strip() if og else ''
+
+    def _price(self, soup: BeautifulSoup) -> str:
+        for cls in [re.compile(r'salePrice|sale_price', re.I), re.compile(r'price', re.I)]:
+            tag = soup.find('span', {'class': cls})
+            if tag:
+                n = re.sub(r'[^\d]', '', tag.get_text())
+                if n:
+                    return f'{int(n):,}원'
+        return ''
+
+    def _original_price(self, soup: BeautifulSoup) -> str:
+        tag = soup.find('span', {'class': re.compile(r'costPrice|original.*price|before.*price', re.I)})
+        if tag:
+            n = re.sub(r'[^\d]', '', tag.get_text())
+            if n:
+                return f'{int(n):,}원'
+        return ''
+
+    def _discount_rate(self, soup: BeautifulSoup) -> str:
+        tag = soup.find('span', {'class': re.compile(r'discount|rate|percent', re.I)})
+        if tag:
+            text = tag.get_text(strip=True)
+            m = re.search(r'\d+', text)
+            if m:
+                return f'{m.group()}%'
+        return ''
+
+    def _store_name(self, soup: BeautifulSoup) -> str:
+        tag = soup.find('a', {'class': re.compile(r'storeName|store.*name', re.I)})
         if tag:
             return tag.get_text(strip=True)
-        tag = soup.find('meta', {'property': 'og:title'})
-        if tag:
-            return tag.get('content', '').strip()
+        og_site = soup.find('meta', {'property': 'og:site_name'})
+        return og_site['content'].strip() if og_site else ''
+
+    def _category(self, soup: BeautifulSoup) -> str:
+        breadcrumb = soup.find('ol', {'class': re.compile(r'breadcrumb|category', re.I)})
+        if breadcrumb:
+            items = [li.get_text(strip=True) for li in breadcrumb.find_all('li')]
+            return ' > '.join(items) if items else ''
         return ''
 
-    def _extract_price(self, soup: BeautifulSoup) -> str:
-        tag = soup.find('span', {'class': re.compile(r'price|Price', re.I)})
-        if tag:
-            numbers = re.sub(r'[^\d]', '', tag.get_text())
-            if numbers:
-                return f'{int(numbers):,}원'
+    def _description(self, soup: BeautifulSoup) -> str:
+        for attr in [{'name': 'description'}, {'property': 'og:description'}]:
+            tag = soup.find('meta', attr)
+            if tag and tag.get('content'):
+                return tag['content'].strip()
         return ''
 
-    def _extract_description(self, soup: BeautifulSoup) -> str:
-        tag = (
-            soup.find('meta', {'name': 'description'})
-            or soup.find('meta', {'property': 'og:description'})
-        )
+    def _tags(self, soup: BeautifulSoup) -> list[str]:
+        tag = soup.find('meta', {'name': 'keywords'})
+        if tag and tag.get('content'):
+            return [t.strip() for t in tag['content'].split(',') if t.strip()]
+        return []
+
+    def _shipping_info(self, soup: BeautifulSoup) -> str:
+        tag = soup.find(class_=re.compile(r'shipping|delivery', re.I))
         if tag:
-            return tag.get('content', '').strip()
+            text = tag.get_text(separator=' ', strip=True)
+            return text[:100]
         return ''
 
-    def _extract_image_urls(self, soup: BeautifulSoup, base_url: str) -> list[str]:
-        images: list[str] = []
-
-        og = soup.find('meta', {'property': 'og:image'})
-        if og and og.get('content'):
-            images.append(og['content'])
-
+    def _detail_image_urls(self, soup: BeautifulSoup, base_url: str) -> list[str]:
         parsed = urlparse(base_url)
-        for img in soup.find_all('img', src=True):
-            src = img['src']
+        seen: set[str] = set()
+        urls: list[str] = []
+
+        def _add(src: str) -> None:
+            if not src:
+                return
             if src.startswith('//'):
                 src = f'{parsed.scheme}:{src}'
             elif not src.startswith('http'):
-                src = f'{parsed.scheme}://{parsed.netloc}{src}'
-            if src not in images and self._is_product_image(src):
-                images.append(src)
-            if len(images) >= 10:
+                src = f'{parsed.scheme}://{parsed.netloc}/{src.lstrip("/")}'
+            if src not in seen and self._is_product_image(src):
+                seen.add(src)
+                urls.append(src)
+
+        og = soup.find('meta', {'property': 'og:image'})
+        if og:
+            _add(og.get('content', ''))
+
+        for img in soup.find_all('img', src=True):
+            _add(img['src'])
+            if len(urls) >= 10:
                 break
 
-        return images
+        return urls
+
+    def _thumbnail_url(self, soup: BeautifulSoup) -> str:
+        og = soup.find('meta', {'property': 'og:image'})
+        if og:
+            return og.get('content', '')
+        img = soup.find('img', src=True)
+        return img['src'] if img else ''
 
     def _is_product_image(self, url: str) -> bool:
-        exclude = ['logo', 'icon', 'banner', 'button', 'blank', 'pixel', 'loading']
         lower = url.lower()
+        exclude = ['logo', 'icon', 'banner', 'button', 'blank', 'pixel', 'loading', 'spinner']
         return not any(p in lower for p in exclude)
-
-    def _guess_ext(self, url: str) -> str:
-        lower = url.lower().split('?')[0]
-        for ext in ['.jpg', '.jpeg', '.png', '.webp', '.gif']:
-            if lower.endswith(ext):
-                return ext
-        return '.jpg'

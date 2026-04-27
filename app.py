@@ -48,7 +48,7 @@ def credentials_save():
         for field in required:
             if field not in data:
                 return jsonify({'success': False, 'error': f'필수 항목 누락: {field}'}), 400
-        CredentialManager.save(data)
+        CredentialManager().save(data)
         logger.info('자격증명 저장 완료')
         return jsonify({'success': True})
     except Exception as e:
@@ -59,7 +59,7 @@ def credentials_save():
 @app.route('/api/credentials/load', methods=['GET'])
 def credentials_load():
     try:
-        creds = CredentialManager.load()
+        creds = CredentialManager().load()
         masked = {
             k: ('••••••••' if 'pw' in k.lower() or 'password' in k.lower() or k == 'gemini_key' else v)
             for k, v in creds.items()
@@ -188,7 +188,7 @@ def _update_status(step: str, done: int, total: int, current_url: str = '') -> N
 
 def _run_posting(urls: list[str]) -> None:
     total = len(urls)
-    creds = CredentialManager.load()
+    creds = CredentialManager().load()
     naver_id = creds.get('naver_id', '')
     naver_pw = creds.get('naver_pw', '')
     blog_id = creds.get('blog_id', '')
@@ -210,7 +210,7 @@ def _run_posting(urls: list[str]) -> None:
             _update_status('상품 정보 파싱 중...', idx, total, url)
             try:
                 product_info = scraper.parse_product(url)
-                logger.info(f'상품 파싱 완료: {product_info.get("title", "")}')
+                logger.info(f'상품 파싱 완료: {product_info.get("product_name", "")}')
             except Exception as e:
                 logger.error(f'상품 파싱 실패 ({url}): {e}')
                 continue
@@ -221,7 +221,10 @@ def _run_posting(urls: list[str]) -> None:
             # 2. 이미지 다운로드 (최대 3장)
             _update_status('이미지 다운로드 중...', idx, total, url)
             try:
-                image_paths = scraper.download_images(product_info.get('images', []), max_count=3)
+                image_paths = scraper.download_images(
+                    product_info.get('detail_image_urls', []),
+                    product_info.get('product_name', 'product'),
+                )
                 logger.info(f'이미지 {len(image_paths)}장 다운로드 완료')
             except Exception as e:
                 logger.warning(f'이미지 다운로드 실패 ({url}): {e}')
