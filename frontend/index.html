@@ -5,638 +5,880 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>네이버 블로그 자동 포스터</title>
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
+    /* ── CSS 변수 ──────────────────────────────────────────────────────────── */
     :root {
-      --primary: #03c75a;
-      --primary-dark: #029a47;
-      --danger: #e74c3c;
-      --bg: #f5f7fa;
-      --card: #ffffff;
-      --border: #dde2ea;
-      --text: #1a1a2e;
-      --muted: #6b7280;
-      --radius: 12px;
+      --primary:        #03C75A;
+      --primary-hover:  #02a84a;
+      --primary-dim:    #e6f9ee;
+      --danger:         #e03131;
+      --warning:        #e67700;
+
+      --sidebar-bg:     #f7f8f9;
+      --sidebar-width:  220px;
+      --topbar-height:  56px;
+
+      --bg:             #f0f2f5;
+      --surface:        #ffffff;
+      --surface-hover:  #f4f6f8;
+      --border:         rgba(0, 0, 0, 0.08);
+      --border-solid:   #e2e5e9;
+
+      --text-primary:   #191f28;
+      --text-secondary: #6b7685;
+      --text-disabled:  #adb5bd;
+
+      --shadow-sm:      0 1px 3px rgba(0,0,0,.07), 0 1px 2px rgba(0,0,0,.04);
+      --shadow-md:      0 4px 12px rgba(0,0,0,.08);
+
+      --radius-sm:      6px;
+      --radius-md:      10px;
+      --radius-lg:      14px;
+
+      --nav-active-bg:  #e6f9ee;
+      --nav-active-txt: #018a3c;
+
+      --log-bg:         #f4f4f4;
+      --log-text:       #1a1a1a;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --primary-dim:    #0d3320;
+
+        --sidebar-bg:     #1a1a1a;
+
+        --bg:             #0f0f0f;
+        --surface:        #1e1e1e;
+        --surface-hover:  #252525;
+        --border:         rgba(255,255,255,.08);
+        --border-solid:   #2e2e2e;
+
+        --text-primary:   #e8eaed;
+        --text-secondary: #9aa0a6;
+        --text-disabled:  #5f6368;
+
+        --shadow-sm:      0 1px 3px rgba(0,0,0,.4);
+        --shadow-md:      0 4px 12px rgba(0,0,0,.5);
+
+        --nav-active-bg:  #0d3320;
+        --nav-active-txt: #4ee68a;
+
+        --log-bg:         #111111;
+        --log-text:       #c8d6c8;
+      }
+    }
+
+    /* ── 리셋 ──────────────────────────────────────────────────────────────── */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
     }
 
     body {
-      font-family: 'Segoe UI', 'Apple SD Gothic Neo', sans-serif;
+      font-family: 'Pretendard', 'Apple SD Gothic Neo', 'Segoe UI', sans-serif;
+      font-size: 14px;
       background: var(--bg);
-      color: var(--text);
-      min-height: 100vh;
+      color: var(--text-primary);
+      line-height: 1.5;
     }
 
-    header {
-      background: var(--card);
-      border-bottom: 1px solid var(--border);
-      padding: 0 32px;
+    /* ── 전체 레이아웃 ─────────────────────────────────────────────────────── */
+    #app {
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ── 사이드바 ──────────────────────────────────────────────────────────── */
+    #sidebar {
+      width: var(--sidebar-width);
+      flex-shrink: 0;
+      background: var(--sidebar-bg);
+      border-right: 1px solid var(--border-solid);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .sidebar-brand {
+      height: var(--topbar-height);
       display: flex;
       align-items: center;
-      gap: 12px;
-      height: 60px;
-      position: sticky;
-      top: 0;
-      z-index: 100;
-      box-shadow: 0 1px 4px rgba(0,0,0,.06);
+      gap: 10px;
+      padding: 0 18px;
+      border-bottom: 1px solid var(--border-solid);
+      flex-shrink: 0;
     }
 
-    header .logo {
-      width: 32px;
-      height: 32px;
+    .brand-icon {
+      width: 28px;
+      height: 28px;
       background: var(--primary);
-      border-radius: 8px;
+      border-radius: 7px;
       display: flex;
       align-items: center;
       justify-content: center;
       color: #fff;
+      font-size: 13px;
       font-weight: 800;
-      font-size: 16px;
+      flex-shrink: 0;
     }
 
-    header h1 { font-size: 18px; font-weight: 700; }
+    .brand-name {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
 
-    .badge {
-      margin-left: auto;
-      background: #e8f5ee;
-      color: var(--primary-dark);
-      font-size: 12px;
+    .brand-name span {
+      display: block;
+      font-size: 10px;
+      font-weight: 400;
+      color: var(--text-secondary);
+    }
+
+    /* ── 네비게이션 ────────────────────────────────────────────────────────── */
+    .nav-section {
+      padding: 12px 10px 0;
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    .nav-label {
+      font-size: 10px;
       font-weight: 600;
-      padding: 4px 10px;
+      letter-spacing: .06em;
+      color: var(--text-disabled);
+      text-transform: uppercase;
+      padding: 0 8px;
+      margin-bottom: 4px;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 10px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      color: var(--text-secondary);
+      font-weight: 500;
+      font-size: 13.5px;
+      transition: background .15s, color .15s;
+      user-select: none;
+      margin-bottom: 2px;
+      border: none;
+      background: transparent;
+      width: 100%;
+      text-align: left;
+    }
+
+    .nav-item:hover {
+      background: var(--surface-hover);
+      color: var(--text-primary);
+    }
+
+    .nav-item.active {
+      background: var(--nav-active-bg);
+      color: var(--nav-active-txt);
+      font-weight: 600;
+    }
+
+    .nav-icon {
+      width: 18px;
+      height: 18px;
+      flex-shrink: 0;
+      opacity: .7;
+    }
+
+    .nav-item.active .nav-icon {
+      opacity: 1;
+    }
+
+    .nav-badge {
+      margin-left: auto;
+      background: var(--primary);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 1px 6px;
       border-radius: 20px;
+      min-width: 18px;
+      text-align: center;
     }
 
-    main {
-      max-width: 960px;
-      margin: 0 auto;
-      padding: 32px 16px;
-      display: grid;
-      gap: 24px;
+    .sidebar-footer {
+      padding: 12px 10px;
+      border-top: 1px solid var(--border-solid);
+      flex-shrink: 0;
     }
 
-    .card {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 24px;
+    .sidebar-version {
+      font-size: 11px;
+      color: var(--text-disabled);
+      text-align: center;
     }
 
-    .card-title {
+    /* ── 오른쪽 메인 영역 ──────────────────────────────────────────────────── */
+    #main-wrap {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ── 상단 Topbar ───────────────────────────────────────────────────────── */
+    #topbar {
+      height: var(--topbar-height);
+      background: var(--surface);
+      border-bottom: 1px solid var(--border-solid);
+      display: flex;
+      align-items: center;
+      padding: 0 24px;
+      gap: 12px;
+      flex-shrink: 0;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .topbar-title {
       font-size: 15px;
       font-weight: 700;
-      margin-bottom: 16px;
+      color: var(--text-primary);
+    }
+
+    .topbar-divider {
+      width: 1px;
+      height: 18px;
+      background: var(--border-solid);
+    }
+
+    .topbar-spacer {
+      flex: 1;
+    }
+
+    /* 로그인 상태 뱃지 */
+    .login-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .login-badge.logged-out {
+      background: #fff0f0;
+      color: #c92a2a;
+    }
+
+    .login-badge.logged-in {
+      background: var(--primary-dim);
+      color: var(--nav-active-txt);
+    }
+
+    .login-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .login-badge.logged-out .login-dot  { background: #e03131; }
+    .login-badge.logged-in  .login-dot  { background: var(--primary); }
+
+    /* 버튼 공통 */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: background .15s, border-color .15s, opacity .15s, transform .08s;
+      white-space: nowrap;
+      text-decoration: none;
+    }
+
+    .btn:active { transform: scale(.97); }
+    .btn:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+
+    .btn-primary {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+    }
+    .btn-primary:hover:not(:disabled) { background: var(--primary-hover); border-color: var(--primary-hover); }
+
+    .btn-secondary {
+      background: var(--surface-hover);
+      color: var(--text-primary);
+      border-color: var(--border-solid);
+    }
+    .btn-secondary:hover:not(:disabled) { background: var(--border-solid); }
+
+    .btn-danger {
+      background: var(--danger);
+      color: #fff;
+      border-color: var(--danger);
+    }
+    .btn-danger:hover:not(:disabled) { background: #c92a2a; }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--text-secondary);
+      border-color: var(--border-solid);
+    }
+    .btn-ghost:hover:not(:disabled) { background: var(--surface-hover); color: var(--text-primary); }
+
+    .btn-sm { padding: 5px 11px; font-size: 12px; }
+    .btn-lg { padding: 11px 22px; font-size: 14.5px; }
+
+    /* ── 콘텐츠 영역 ───────────────────────────────────────────────────────── */
+    #content {
+      flex: 1;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* 패널 공통 */
+    .panel {
+      position: absolute;
+      inset: 0;
+      overflow-y: auto;
+      padding: 24px;
+      display: none;
+    }
+
+    .panel.active {
+      display: block;
+    }
+
+    /* ── 카드 ──────────────────────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 0.5px solid var(--border-solid);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-sm);
+      overflow: hidden;
+    }
+
+    .card-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border-solid);
       display: flex;
       align-items: center;
       gap: 8px;
     }
 
-    .card-title .step {
-      width: 24px;
-      height: 24px;
-      background: var(--primary);
-      color: #fff;
-      border-radius: 50%;
-      font-size: 12px;
-      font-weight: 800;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+    .card-header-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text-primary);
+      flex: 1;
+    }
+
+    .card-body {
+      padding: 20px;
+    }
+
+    /* ── 폼 요소 ───────────────────────────────────────────────────────────── */
+    .form-group {
+      margin-bottom: 14px;
+    }
+
+    .form-group:last-child {
+      margin-bottom: 0;
     }
 
     label {
       display: block;
-      font-size: 13px;
+      font-size: 12.5px;
       font-weight: 600;
-      color: var(--muted);
+      color: var(--text-secondary);
       margin-bottom: 6px;
     }
 
-    input[type=text], input[type=password], input[type=url], textarea, select {
+    input[type="text"],
+    input[type="password"],
+    input[type="url"],
+    input[type="number"],
+    select,
+    textarea {
       width: 100%;
-      padding: 10px 14px;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      font-size: 14px;
+      padding: 9px 12px;
+      background: var(--bg);
+      border: 1px solid var(--border-solid);
+      border-radius: var(--radius-sm);
+      font-size: 13.5px;
       font-family: inherit;
-      transition: border-color .2s;
+      color: var(--text-primary);
       outline: none;
-      background: #fafbfc;
+      transition: border-color .15s, box-shadow .15s;
+      appearance: none;
     }
 
-    input:focus, textarea:focus, select:focus {
+    input:focus,
+    select:focus,
+    textarea:focus {
       border-color: var(--primary);
-      background: #fff;
+      box-shadow: 0 0 0 3px rgba(3,199,90,.12);
+      background: var(--surface);
     }
 
-    textarea { resize: vertical; min-height: 160px; }
-
-    .row { display: grid; gap: 14px; }
-    .row.cols-2 { grid-template-columns: 1fr 1fr; }
-
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 10px 20px;
-      border-radius: 8px;
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-      border: none;
-      transition: background .2s, transform .1s;
+    input::placeholder,
+    textarea::placeholder {
+      color: var(--text-disabled);
     }
 
-    .btn:active { transform: scale(.98); }
-    .btn-primary { background: var(--primary); color: #fff; }
-    .btn-primary:hover { background: var(--primary-dark); }
-    .btn-secondary { background: #f0f4f8; color: var(--text); }
-    .btn-secondary:hover { background: #e2e8f0; }
-    .btn-danger { background: var(--danger); color: #fff; }
-    .btn-danger:hover { background: #c0392b; }
-    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
-    .btn-outline:hover { background: #f0f4f8; }
-    .btn:disabled { opacity: .5; cursor: not-allowed; }
+    textarea { resize: vertical; min-height: 80px; line-height: 1.6; }
 
-    .btn-group { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
-
-    .status-bar {
-      padding: 10px 14px;
-      border-radius: 8px;
-      font-size: 13px;
-      font-weight: 500;
-      display: none;
+    .form-row {
+      display: grid;
+      gap: 12px;
     }
+    .form-row.cols-2 { grid-template-columns: 1fr 1fr; }
+    .form-row.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
 
-    .status-bar.info  { background: #e8f4fd; color: #1565c0; display: block; }
-    .status-bar.ok    { background: #e8f5ee; color: #1b5e20; display: block; }
-    .status-bar.error { background: #fdecea; color: #b71c1c; display: block; }
-    .status-bar.loading { background: #fff8e1; color: #e65100; display: block; }
-
-    .product-preview {
-      display: none;
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      overflow: hidden;
-      margin-top: 16px;
-    }
-
-    .product-preview.visible { display: block; }
-
-    .preview-header {
-      background: #f8fafb;
-      padding: 12px 16px;
-      font-size: 13px;
-      font-weight: 700;
-      border-bottom: 1px solid var(--border);
-      color: var(--muted);
-    }
-
-    .preview-body { padding: 16px; }
-    .preview-title { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
-    .preview-price { font-size: 20px; font-weight: 800; color: var(--primary); margin-bottom: 8px; }
-    .preview-desc { font-size: 13px; color: var(--muted); line-height: 1.6; }
-
-    .image-grid {
+    /* ── 인라인 입력 + 버튼 ────────────────────────────────────────────────── */
+    .input-action {
       display: flex;
       gap: 8px;
-      flex-wrap: wrap;
-      margin-top: 12px;
     }
 
-    .image-grid img {
-      width: 80px;
-      height: 80px;
-      object-fit: cover;
-      border-radius: 6px;
-      border: 1px solid var(--border);
-    }
-
-    .pipeline {
-      display: flex;
-      gap: 0;
-      align-items: center;
-      margin-bottom: 20px;
-    }
-
-    .pipeline-step {
+    .input-action input {
       flex: 1;
-      text-align: center;
+    }
+
+    /* ── URL 리스트 ────────────────────────────────────────────────────────── */
+    .url-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .url-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      background: var(--bg);
+      border: 1px solid var(--border-solid);
+      border-radius: var(--radius-sm);
+      transition: background .12s;
+    }
+
+    .url-item:hover { background: var(--surface-hover); }
+
+    .url-num {
       font-size: 12px;
-      font-weight: 600;
-      padding: 8px 4px;
-      border-radius: 6px;
-      background: #f0f4f8;
-      color: var(--muted);
+      font-weight: 700;
+      color: var(--text-disabled);
+      width: 20px;
+      flex-shrink: 0;
+      text-align: center;
+    }
+
+    .url-text {
+      flex: 1;
+      font-size: 13px;
+      color: var(--text-primary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* 상태 점 */
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .status-dot.idle     { background: #adb5bd; }
+    .status-dot.running  { background: #f0a500; animation: pulse-dot .8s infinite; }
+    .status-dot.done     { background: var(--primary); }
+    .status-dot.error    { background: var(--danger); }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: .3; }
+    }
+
+    /* ── 진행률 바 ─────────────────────────────────────────────────────────── */
+    .progress-wrap {
+      background: var(--border-solid);
+      border-radius: 999px;
+      height: 8px;
+      overflow: hidden;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: var(--primary);
+      border-radius: 999px;
+      transition: width .4s ease;
+      width: 0%;
+    }
+
+    /* ── 단계 리스트 ───────────────────────────────────────────────────────── */
+    .step-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    .step-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      padding: 12px 0;
       position: relative;
     }
 
-    .pipeline-step.active { background: var(--primary); color: #fff; }
-    .pipeline-step.done { background: #e8f5ee; color: var(--primary-dark); }
-
-    .pipeline-step:not(:last-child)::after {
-      content: '→';
+    .step-item:not(:last-child)::after {
+      content: '';
       position: absolute;
-      right: -12px;
-      color: var(--border);
-      font-size: 14px;
+      left: 11px;
+      top: 36px;
+      bottom: 0;
+      width: 2px;
+      background: var(--border-solid);
     }
 
-    .pipeline-sep { width: 24px; flex-shrink: 0; }
-
-    .log-box {
-      background: #1a1a2e;
-      color: #a8d8a8;
-      font-family: 'Courier New', monospace;
-      font-size: 12px;
-      border-radius: 8px;
-      padding: 12px 16px;
-      max-height: 180px;
-      overflow-y: auto;
-      line-height: 1.7;
-      display: none;
+    .step-circle {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      border: 2px solid var(--border-solid);
+      background: var(--surface);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-disabled);
+      position: relative;
+      z-index: 1;
+      transition: all .2s;
     }
 
-    .log-box.visible { display: block; }
-    .log-entry { margin: 0; }
-    .log-entry.err { color: #ff8a80; }
-    .log-entry.ok  { color: #69f0ae; }
+    .step-item.done   .step-circle { border-color: var(--primary); background: var(--primary); color: #fff; }
+    .step-item.active .step-circle { border-color: var(--primary); background: var(--surface);  color: var(--primary); }
+    .step-item.error  .step-circle { border-color: var(--danger);  background: var(--danger);   color: #fff; }
 
-    .tone-select { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+    .step-info {}
+    .step-name  { font-size: 13.5px; font-weight: 600; color: var(--text-primary); }
+    .step-desc  { font-size: 12px;   color: var(--text-secondary); margin-top: 2px; }
 
-    .tone-btn {
-      padding: 6px 16px;
+    /* ── 로그 창 ───────────────────────────────────────────────────────────── */
+    .log-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .filter-btn {
+      padding: 4px 12px;
       border-radius: 20px;
-      border: 1px solid var(--border);
-      background: #f0f4f8;
-      font-size: 13px;
-      cursor: pointer;
-      transition: all .15s;
-    }
-
-    .tone-btn.selected {
-      background: var(--primary);
-      color: #fff;
-      border-color: var(--primary);
-    }
-
-    footer {
-      text-align: center;
-      padding: 24px;
+      border: 1px solid var(--border-solid);
+      background: var(--surface);
+      color: var(--text-secondary);
       font-size: 12px;
-      color: var(--muted);
+      font-weight: 600;
+      cursor: pointer;
+      transition: all .12s;
+      font-family: inherit;
     }
 
-    @media (max-width: 600px) {
-      .row.cols-2 { grid-template-columns: 1fr; }
-      .pipeline-step:not(:last-child)::after { display: none; }
+    .filter-btn:hover  { background: var(--surface-hover); }
+    .filter-btn.active { background: var(--text-primary); color: var(--surface); border-color: var(--text-primary); }
+    .filter-btn.info   { }
+    .filter-btn.warning.active { background: var(--warning); border-color: var(--warning); color: #fff; }
+    .filter-btn.error.active   { background: var(--danger);  border-color: var(--danger);  color: #fff; }
+
+    .log-toolbar-spacer { flex: 1; }
+
+    .log-output {
+      background: var(--log-bg);
+      color: var(--log-text);
+      font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+      font-size: 12.5px;
+      line-height: 1.75;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-solid);
+      padding: 14px 16px;
+      overflow-y: auto;
+      min-height: 300px;
+      max-height: calc(100vh - 280px);
     }
+
+    .log-line { display: flex; gap: 10px; }
+    .log-time  { color: var(--text-disabled); flex-shrink: 0; }
+    .log-level { flex-shrink: 0; width: 56px; font-weight: 700; }
+    .log-msg   { flex: 1; word-break: break-all; }
+
+    .log-level.INFO    { color: #4dabf7; }
+    .log-level.WARNING { color: var(--warning); }
+    .log-level.ERROR   { color: var(--danger);  }
+    .log-level.DEBUG   { color: var(--text-disabled); }
+
+    .log-line.is-error   .log-msg { color: var(--danger); }
+    .log-line.is-warning .log-msg { color: var(--warning); }
+    .log-line.is-ok      .log-msg { color: var(--primary); }
+
+    /* ── 설정 탭 구분선 ────────────────────────────────────────────────────── */
+    .settings-section-title {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .05em;
+      color: var(--text-disabled);
+      text-transform: uppercase;
+      margin-bottom: 12px;
+      margin-top: 4px;
+    }
+
+    .divider {
+      border: none;
+      border-top: 1px solid var(--border-solid);
+      margin: 20px 0;
+    }
+
+    /* ── 스피너 ────────────────────────────────────────────────────────────── */
+    .spinner {
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(255,255,255,.35);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .6s linear infinite;
+      flex-shrink: 0;
+    }
+
+    .spinner.dark {
+      border-color: rgba(0,0,0,.15);
+      border-top-color: var(--text-primary);
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* ── 알림 토스트 ───────────────────────────────────────────────────────── */
+    #toast-wrap {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 9999;
+      pointer-events: none;
+    }
+
+    .toast {
+      padding: 11px 16px;
+      border-radius: var(--radius-md);
+      font-size: 13px;
+      font-weight: 500;
+      box-shadow: var(--shadow-md);
+      max-width: 320px;
+      pointer-events: auto;
+      animation: toast-in .22s ease;
+    }
+
+    .toast.ok      { background: var(--primary); color: #fff; }
+    .toast.error   { background: var(--danger);  color: #fff; }
+    .toast.warning { background: #f08c00;         color: #fff; }
+    .toast.info    { background: var(--surface);  color: var(--text-primary);
+                     border: 1px solid var(--border-solid); }
+
+    @keyframes toast-in {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0);    }
+    }
+
+    /* ── 빈 상태 ───────────────────────────────────────────────────────────── */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 48px 24px;
+      color: var(--text-disabled);
+      text-align: center;
+    }
+
+    .empty-icon {
+      font-size: 36px;
+      margin-bottom: 12px;
+      opacity: .5;
+    }
+
+    .empty-text { font-size: 13px; }
+
+    /* ── 유틸 ──────────────────────────────────────────────────────────────── */
+    .flex      { display: flex; }
+    .items-center { align-items: center; }
+    .gap-8     { gap: 8px; }
+    .gap-12    { gap: 12px; }
+    .ml-auto   { margin-left: auto; }
+    .mt-12     { margin-top: 12px; }
+    .mt-16     { margin-top: 16px; }
+    .mt-20     { margin-top: 20px; }
+    .mb-12     { margin-bottom: 12px; }
+    .mb-16     { margin-bottom: 16px; }
+
+    .grid-cols-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+    .text-sm      { font-size: 12.5px; }
+    .text-muted   { color: var(--text-secondary); }
+    .text-primary { color: var(--primary); font-weight: 600; }
+    .font-mono    { font-family: 'Consolas', monospace; }
+
+    /* ── 스크롤바 ──────────────────────────────────────────────────────────── */
+    ::-webkit-scrollbar         { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track   { background: transparent; }
+    ::-webkit-scrollbar-thumb   { background: var(--border-solid); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-disabled); }
   </style>
 </head>
 <body>
 
-<header>
-  <div class="logo">N</div>
-  <h1>네이버 블로그 자동 포스터</h1>
-  <span class="badge">스마트스토어 연동</span>
-</header>
+<div id="app">
 
-<main>
+  <!-- ── 사이드바 ─────────────────────────────────────────────────────────── -->
+  <aside id="sidebar">
 
-  <!-- STEP 1: 자격증명 -->
-  <div class="card">
-    <div class="card-title">
-      <span class="step">1</span> 네이버 계정 설정
-    </div>
-    <div class="row cols-2">
-      <div>
-        <label>네이버 아이디</label>
-        <input type="text" id="naverId" placeholder="naver_id" />
-      </div>
-      <div>
-        <label>네이버 비밀번호</label>
-        <input type="password" id="naverPw" placeholder="••••••••" />
+    <div class="sidebar-brand">
+      <div class="brand-icon">N</div>
+      <div class="brand-name">
+        블로그 자동화
+        <span>SmartStore Autoposter</span>
       </div>
     </div>
-    <div class="btn-group">
-      <button class="btn btn-primary" onclick="saveCredentials()">저장</button>
-      <button class="btn btn-outline" onclick="loadCredentials()">불러오기</button>
-      <button class="btn btn-danger" onclick="deleteCredentials()">삭제</button>
-    </div>
-    <div id="credStatus" class="status-bar" style="margin-top:12px;"></div>
-  </div>
 
-  <!-- STEP 2: 상품 파싱 -->
-  <div class="card">
-    <div class="card-title">
-      <span class="step">2</span> 스마트스토어 상품 파싱
+    <nav class="nav-section">
+      <div class="nav-label" style="margin-top:4px;">메뉴</div>
+
+      <button class="nav-item active" data-panel="urls">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+          <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+        </svg>
+        URL 목록
+        <span class="nav-badge" id="nav-badge-urls">0</span>
+      </button>
+
+      <button class="nav-item" data-panel="run">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polygon points="5 3 19 12 5 21 5 3"/>
+        </svg>
+        포스팅 실행
+      </button>
+
+      <button class="nav-item" data-panel="log">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="16" y1="13" x2="8" y2="13"/>
+          <line x1="16" y1="17" x2="8" y2="17"/>
+          <polyline points="10 9 9 9 8 9"/>
+        </svg>
+        로그 보기
+      </button>
+
+      <button class="nav-item" data-panel="settings">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+        설정
+      </button>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="sidebar-version">v1.0.0 &nbsp;·&nbsp; Flask + Gemini</div>
     </div>
-    <label>상품 URL</label>
-    <input type="url" id="productUrl" placeholder="https://smartstore.naver.com/..." />
-    <div class="btn-group">
-      <button class="btn btn-primary" onclick="scrapeProduct()">상품 정보 가져오기</button>
-    </div>
-    <div id="scrapeStatus" class="status-bar" style="margin-top:12px;"></div>
-    <div id="productPreview" class="product-preview">
-      <div class="preview-header">파싱된 상품 정보</div>
-      <div class="preview-body">
-        <div class="preview-title" id="previewTitle"></div>
-        <div class="preview-price" id="previewPrice"></div>
-        <div class="preview-desc" id="previewDesc"></div>
-        <div class="image-grid" id="previewImages"></div>
+
+  </aside>
+
+  <!-- ── 메인 영역 ─────────────────────────────────────────────────────────── -->
+  <div id="main-wrap">
+
+    <!-- 상단 Topbar -->
+    <header id="topbar">
+      <span class="topbar-title" id="topbar-title">URL 목록</span>
+      <div class="topbar-divider"></div>
+      <span class="text-sm text-muted" id="topbar-sub">포스팅할 URL을 추가하세요</span>
+      <div class="topbar-spacer"></div>
+
+      <!-- 로그인 상태 뱃지 -->
+      <div class="login-badge logged-out" id="login-badge">
+        <span class="login-dot"></span>
+        <span id="login-label">로그인 안됨</span>
       </div>
-    </div>
-  </div>
 
-  <!-- STEP 3: 포스팅 생성 -->
-  <div class="card">
-    <div class="card-title">
-      <span class="step">3</span> 블로그 포스팅 생성 (Gemini AI)
-    </div>
-    <div class="row" style="margin-bottom:14px;">
-      <div>
-        <label>말투 선택</label>
-        <div class="tone-select">
-          <button class="tone-btn selected" data-tone="friendly" onclick="selectTone(this)">친근하게</button>
-          <button class="tone-btn" data-tone="formal" onclick="selectTone(this)">공식적으로</button>
-          <button class="tone-btn" data-tone="excited" onclick="selectTone(this)">열정적으로</button>
-        </div>
-      </div>
-    </div>
-    <div>
-      <label>추가 키워드 (쉼표 구분)</label>
-      <input type="text" id="keywords" placeholder="예: 가성비, 추천, 선물" />
-    </div>
-    <div class="btn-group">
-      <button class="btn btn-primary" onclick="generatePost()">포스팅 생성</button>
-    </div>
-    <div id="generateStatus" class="status-bar" style="margin-top:12px;"></div>
+      <!-- 로그인 버튼 -->
+      <button class="btn btn-primary btn-sm" id="btn-login">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
+          <polyline points="10 17 15 12 10 7"/>
+          <line x1="15" y1="12" x2="3" y2="12"/>
+        </svg>
+        설정으로 이동
+      </button>
+    </header>
 
-    <div id="postEditor" style="display:none; margin-top:16px;">
-      <div style="margin-bottom:14px;">
-        <label>포스팅 제목</label>
-        <input type="text" id="postTitle" />
-      </div>
-      <div>
-        <label>포스팅 본문</label>
-        <textarea id="postBody" style="min-height:260px;"></textarea>
-      </div>
-    </div>
-  </div>
+    <!-- 콘텐츠 패널 -->
+    <div id="content">
 
-  <!-- STEP 4: 게시 -->
-  <div class="card">
-    <div class="card-title">
-      <span class="step">4</span> 블로그에 게시
-    </div>
-    <div class="pipeline">
-      <div class="pipeline-step" id="pipe1">상품 파싱</div>
-      <div class="pipeline-sep"></div>
-      <div class="pipeline-step" id="pipe2">AI 생성</div>
-      <div class="pipeline-sep"></div>
-      <div class="pipeline-step" id="pipe3">블로그 게시</div>
-    </div>
-    <div class="btn-group">
-      <button class="btn btn-primary" onclick="postBlog()">블로그에 게시하기</button>
-      <button class="btn btn-secondary" onclick="automate()">전체 자동 실행</button>
-    </div>
-    <div id="postStatus" class="status-bar" style="margin-top:12px;"></div>
-    <div id="logBox" class="log-box" style="margin-top:12px;"></div>
-  </div>
+      <!-- ① URL 목록 탭 -->
+      <section id="panel-urls" class="panel active">
+        <!-- 내용은 JS로 렌더링 -->
+      </section>
 
-</main>
+      <!-- ② 포스팅 실행 탭 -->
+      <section id="panel-run" class="panel">
+        <!-- 내용은 JS로 렌더링 -->
+      </section>
 
-<footer>
-  Naver Blog Autoposter &mdash; Flask + Selenium + Gemini AI
-</footer>
+      <!-- ③ 로그 보기 탭 -->
+      <section id="panel-log" class="panel">
+        <!-- 내용은 JS로 렌더링 -->
+      </section>
 
-<script>
-  const API = '';
-  let selectedTone = 'friendly';
-  let scrapedProduct = null;
+      <!-- ④ 설정 탭 -->
+      <section id="panel-settings" class="panel">
+        <!-- 내용은 JS로 렌더링 -->
+      </section>
 
-  // ── 상태 표시 ────────────────────────────────────────────────────────────
-  function setStatus(id, type, msg) {
-    const el = document.getElementById(id);
-    el.className = `status-bar ${type}`;
-    el.textContent = msg;
-  }
+    </div><!-- /#content -->
+  </div><!-- /#main-wrap -->
+</div><!-- /#app -->
 
-  function appendLog(msg, type = '') {
-    const box = document.getElementById('logBox');
-    box.classList.add('visible');
-    const p = document.createElement('p');
-    p.className = `log-entry ${type}`;
-    const time = new Date().toLocaleTimeString('ko-KR');
-    p.textContent = `[${time}] ${msg}`;
-    box.appendChild(p);
-    box.scrollTop = box.scrollHeight;
-  }
-
-  function setPipe(step) {
-    ['pipe1','pipe2','pipe3'].forEach((id, i) => {
-      const el = document.getElementById(id);
-      el.className = 'pipeline-step' + (i + 1 < step ? ' done' : i + 1 === step ? ' active' : '');
-    });
-  }
-
-  // ── 말투 선택 ─────────────────────────────────────────────────────────────
-  function selectTone(btn) {
-    document.querySelectorAll('.tone-btn').forEach(b => b.classList.remove('selected'));
-    btn.classList.add('selected');
-    selectedTone = btn.dataset.tone;
-  }
-
-  // ── 자격증명 ──────────────────────────────────────────────────────────────
-  async function saveCredentials() {
-    const id = document.getElementById('naverId').value.trim();
-    const pw = document.getElementById('naverPw').value;
-    if (!id || !pw) { setStatus('credStatus', 'error', '아이디와 비밀번호를 입력하세요.'); return; }
-
-    setStatus('credStatus', 'loading', '저장 중...');
-    const res = await fetch(`${API}/api/credentials`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ naver_id: id, naver_pw: pw }),
-    });
-    const json = await res.json();
-    setStatus('credStatus', json.ok ? 'ok' : 'error', json.message || json.error);
-  }
-
-  async function loadCredentials() {
-    const res = await fetch(`${API}/api/credentials`);
-    const json = await res.json();
-    if (json.ok && json.data.naver_id) {
-      document.getElementById('naverId').value = json.data.naver_id;
-      setStatus('credStatus', 'ok', '저장된 자격증명을 불러왔습니다.');
-    } else {
-      setStatus('credStatus', 'info', '저장된 자격증명이 없습니다.');
-    }
-  }
-
-  async function deleteCredentials() {
-    if (!confirm('저장된 자격증명을 삭제할까요?')) return;
-    const res = await fetch(`${API}/api/credentials`, { method: 'DELETE' });
-    const json = await res.json();
-    setStatus('credStatus', json.ok ? 'ok' : 'error', json.message || json.error);
-    document.getElementById('naverId').value = '';
-    document.getElementById('naverPw').value = '';
-  }
-
-  // ── 상품 파싱 ─────────────────────────────────────────────────────────────
-  async function scrapeProduct() {
-    const url = document.getElementById('productUrl').value.trim();
-    if (!url) { setStatus('scrapeStatus', 'error', '상품 URL을 입력하세요.'); return; }
-
-    setStatus('scrapeStatus', 'loading', '상품 정보를 가져오는 중...');
-    setPipe(1);
-
-    try {
-      const res = await fetch(`${API}/api/scrape`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url }),
-      });
-      const json = await res.json();
-      if (!json.ok) { setStatus('scrapeStatus', 'error', json.error); return; }
-
-      scrapedProduct = json.data;
-      renderProductPreview(json.data);
-      setStatus('scrapeStatus', 'ok', `상품 파싱 완료 - ${json.data.title}`);
-      setPipe(2);
-    } catch (e) {
-      setStatus('scrapeStatus', 'error', `오류: ${e.message}`);
-    }
-  }
-
-  function renderProductPreview(product) {
-    document.getElementById('previewTitle').textContent = product.title || '(제목 없음)';
-    document.getElementById('previewPrice').textContent = product.price || '';
-    document.getElementById('previewDesc').textContent = product.description || '';
-
-    const grid = document.getElementById('previewImages');
-    grid.innerHTML = '';
-    (product.images || []).slice(0, 5).forEach(src => {
-      const img = document.createElement('img');
-      img.src = src;
-      img.alt = '';
-      img.onerror = () => img.remove();
-      grid.appendChild(img);
-    });
-
-    document.getElementById('productPreview').classList.add('visible');
-  }
-
-  // ── 포스팅 생성 ───────────────────────────────────────────────────────────
-  async function generatePost() {
-    if (!scrapedProduct) { setStatus('generateStatus', 'error', '먼저 상품 정보를 가져오세요.'); return; }
-
-    const keywords = document.getElementById('keywords').value
-      .split(',').map(k => k.trim()).filter(Boolean);
-
-    setStatus('generateStatus', 'loading', 'AI가 포스팅을 작성 중입니다...');
-
-    try {
-      const res = await fetch(`${API}/api/generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ product: scrapedProduct, tone: selectedTone, keywords }),
-      });
-      const json = await res.json();
-      if (!json.ok) { setStatus('generateStatus', 'error', json.error); return; }
-
-      document.getElementById('postTitle').value = json.data.title;
-      document.getElementById('postBody').value = json.data.body;
-      document.getElementById('postEditor').style.display = 'block';
-      setStatus('generateStatus', 'ok', '포스팅 생성 완료! 내용을 검토하고 수정할 수 있습니다.');
-      setPipe(3);
-    } catch (e) {
-      setStatus('generateStatus', 'error', `오류: ${e.message}`);
-    }
-  }
-
-  // ── 블로그 게시 ───────────────────────────────────────────────────────────
-  async function postBlog() {
-    const title = document.getElementById('postTitle').value.trim();
-    const body = document.getElementById('postBody').value.trim();
-    if (!title || !body) { setStatus('postStatus', 'error', '포스팅 제목과 본문을 먼저 생성하세요.'); return; }
-
-    setStatus('postStatus', 'loading', '블로그에 게시 중... (브라우저가 자동으로 열립니다)');
-    appendLog('블로그 게시 시작');
-
-    try {
-      const res = await fetch(`${API}/api/post`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title,
-          body,
-          images: scrapedProduct?.images || [],
-        }),
-      });
-      const json = await res.json();
-      if (json.ok) {
-        setStatus('postStatus', 'ok', `게시 완료! ${json.post_url}`);
-        appendLog(`게시 완료: ${json.post_url}`, 'ok');
-      } else {
-        setStatus('postStatus', 'error', json.error);
-        appendLog(`오류: ${json.error}`, 'err');
-      }
-    } catch (e) {
-      setStatus('postStatus', 'error', `오류: ${e.message}`);
-      appendLog(`오류: ${e.message}`, 'err');
-    }
-  }
-
-  // ── 전체 자동화 ───────────────────────────────────────────────────────────
-  async function automate() {
-    const url = document.getElementById('productUrl').value.trim();
-    if (!url) { setStatus('postStatus', 'error', '상품 URL을 먼저 입력하세요.'); return; }
-
-    const keywords = document.getElementById('keywords').value
-      .split(',').map(k => k.trim()).filter(Boolean);
-
-    setStatus('postStatus', 'loading', '전체 자동화 실행 중...');
-    appendLog('전체 자동화 파이프라인 시작');
-    setPipe(1);
-
-    try {
-      const res = await fetch(`${API}/api/automate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, tone: selectedTone, keywords }),
-      });
-      const json = await res.json();
-
-      if (json.product) {
-        scrapedProduct = json.product;
-        renderProductPreview(json.product);
-        appendLog(`상품 파싱 완료: ${json.product.title}`, 'ok');
-        setPipe(2);
-      }
-
-      if (json.post) {
-        document.getElementById('postTitle').value = json.post.title;
-        document.getElementById('postBody').value = json.post.body;
-        document.getElementById('postEditor').style.display = 'block';
-        appendLog('포스팅 생성 완료', 'ok');
-        setPipe(3);
-      }
-
-      if (json.ok) {
-        setStatus('postStatus', 'ok', `완료! ${json.post_url}`);
-        appendLog(`블로그 게시 완료: ${json.post_url}`, 'ok');
-      } else {
-        setStatus('postStatus', 'error', json.error);
-        appendLog(`오류: ${json.error}`, 'err');
-      }
-    } catch (e) {
-      setStatus('postStatus', 'error', `오류: ${e.message}`);
-      appendLog(`오류: ${e.message}`, 'err');
-    }
-  }
-
-  // 페이지 로드 시 저장된 자격증명 확인
-  loadCredentials().catch(() => {});
-</script>
+<!-- 토스트 컨테이너 -->
+<div id="toast-wrap"></div>
 
 </body>
 </html>
