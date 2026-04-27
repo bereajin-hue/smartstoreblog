@@ -2,6 +2,7 @@ import os
 import re
 import threading
 import webbrowser
+from dotenv import load_dotenv
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 
@@ -10,6 +11,9 @@ from core.smartstore_scraper import SmartStoreScraper
 from core.gemini_writer import GeminiWriter
 from core.blog_poster import NaverBlogPoster
 from utils.logger import get_logger
+
+# .env 로드 (모듈 임포트 전에 환경변수 준비)
+load_dotenv()
 
 logger = get_logger(__name__)
 
@@ -282,12 +286,22 @@ def _run_posting(urls: list[str]) -> None:
 
 # ── 진입점 ─────────────────────────────────────────────────────────────────────
 
+def _ensure_dirs() -> None:
+    base = os.path.dirname(__file__)
+    for path in [
+        os.path.join(base, 'data'),
+        os.path.join(base, 'data', 'images'),
+    ]:
+        os.makedirs(path, exist_ok=True)
+
+
 def _open_browser() -> None:
     webbrowser.open('http://127.0.0.1:5000')
 
 
 if __name__ == '__main__':
-    logger.info('Flask 서버 시작 - http://127.0.0.1:5000')
-    # use_reloader=False 로 브라우저가 두 번 열리는 것 방지
-    threading.Timer(1.2, _open_browser).start()
+    _ensure_dirs()
+    logger.info('서버 시작: http://127.0.0.1:5000')
+    # use_reloader=False — 브라우저가 두 번 열리는 것 방지
+    threading.Timer(1.0, _open_browser).start()
     app.run(host='127.0.0.1', port=5000, debug=False, use_reloader=False)
