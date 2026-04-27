@@ -756,6 +756,128 @@
     .text-primary { color: var(--primary); font-weight: 600; }
     .font-mono    { font-family: 'Consolas', monospace; }
 
+    /* ── 실행 탭 전용 ─────────────────────────────────────────────────────── */
+    .run-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 11.5px;
+      font-weight: 700;
+    }
+
+    .run-badge::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .run-badge.idle     { background: var(--surface-hover);  color: var(--text-disabled); }
+    .run-badge.idle::before    { background: #adb5bd; }
+
+    .run-badge.running  { background: #fff8e1; color: #e65100; }
+    .run-badge.running::before { background: #f0a500; animation: pulse-dot .8s infinite; }
+
+    .run-badge.done     { background: var(--primary-dim); color: var(--nav-active-txt); }
+    .run-badge.done::before    { background: var(--primary); }
+
+    .run-badge.error    { background: #fff0f0; color: var(--danger); }
+    .run-badge.error::before   { background: var(--danger); }
+
+    .run-url-row {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      padding: 10px 14px;
+      background: var(--bg);
+      border: 1px solid var(--border-solid);
+      border-radius: var(--radius-sm);
+    }
+
+    .run-current-url {
+      flex: 1;
+      font-size: 12.5px;
+      font-family: 'Consolas', monospace;
+      color: var(--primary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* 완료 결과 리스트 */
+    .result-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .result-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 12px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      border: 1px solid var(--border-solid);
+    }
+
+    .result-item.ok    { background: var(--primary-dim); border-color: #b2f0cd; }
+    .result-item.error { background: #fff0f0;            border-color: #ffc9c9; }
+
+    .result-item-icon { flex-shrink: 0; }
+    .result-item-url  { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: 12px; }
+    .result-item-msg  { font-size: 12px; font-weight: 600; }
+    .result-item.ok    .result-item-msg { color: var(--nav-active-txt); }
+    .result-item.error .result-item-msg { color: var(--danger); }
+
+    /* ── 로그 탭 전용 ──────────────────────────────────────────────────────── */
+    .log-output {
+      border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+      border: none;
+      border-top: 1px solid var(--border-solid);
+    }
+
+    .log-empty {
+      padding: 32px;
+      text-align: center;
+      font-size: 13px;
+    }
+
+    .log-line {
+      padding: 1px 0;
+      border-radius: 2px;
+    }
+
+    .log-line.is-error   { background: rgba(224,49,49,.07); }
+    .log-line.is-warning { background: rgba(230,119,0,.07); }
+
+    /* 폴링 인디케이터 점 */
+    .log-poll-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--text-disabled);
+      flex-shrink: 0;
+      transition: background .3s;
+    }
+
+    .log-poll-dot.active { background: var(--primary); animation: pulse-dot .6s ease; }
+
+    /* 자동 스크롤 토글 */
+    .autoscroll-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .autoscroll-toggle input { width: 14px; height: 14px; accent-color: var(--primary); cursor: pointer; }
+
     /* ── 페르소나 버튼 ─────────────────────────────────────────────────────── */
     .persona-btn {
       display: inline-flex;
@@ -1042,12 +1164,187 @@
 
       <!-- ② 포스팅 실행 탭 -->
       <section id="panel-run" class="panel">
-        <!-- 내용은 JS로 렌더링 -->
+
+        <!-- 현재 상태 카드 -->
+        <div class="card mb-16">
+          <div class="card-header">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <circle cx="12" cy="12" r="10"/>
+              <polyline points="12 6 12 12 16 14"/>
+            </svg>
+            <span class="card-header-title">실행 상태</span>
+            <span id="run-status-badge" class="run-badge idle ml-auto">대기 중</span>
+          </div>
+          <div class="card-body">
+
+            <!-- 현재 처리 URL -->
+            <div class="run-url-row mb-16">
+              <span class="text-sm text-muted">현재 처리 중</span>
+              <span id="run-current-url" class="run-current-url">-</span>
+            </div>
+
+            <!-- 진행률 -->
+            <div style="display:flex; align-items:center; gap:12px; margin-bottom:6px;">
+              <div class="progress-wrap" style="flex:1;">
+                <div class="progress-bar" id="run-progress-bar" style="width:0%;"></div>
+              </div>
+              <span id="run-progress-text" class="text-sm text-muted" style="width:60px; text-align:right; flex-shrink:0;">
+                0 / 0
+              </span>
+            </div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:20px;">
+              <span id="run-step-label" class="text-sm text-muted">시작 전</span>
+              <span id="run-progress-pct" class="text-sm" style="color:var(--primary); font-weight:600;">0%</span>
+            </div>
+
+            <!-- 시작 / 중지 버튼 -->
+            <div style="display:flex; gap:10px;">
+              <button class="btn btn-primary btn-lg" id="btn-run-start" style="flex:1;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <polygon points="5 3 19 12 5 21 5 3"/>
+                </svg>
+                포스팅 시작
+              </button>
+              <button class="btn btn-danger btn-lg" id="btn-run-stop" disabled style="flex:1;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <rect x="6" y="6" width="12" height="12"/>
+                </svg>
+                중지
+              </button>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- 단계 파이프라인 카드 -->
+        <div class="card mb-16">
+          <div class="card-header">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+            </svg>
+            <span class="card-header-title">처리 단계</span>
+          </div>
+          <div class="card-body" style="padding-top:12px; padding-bottom:4px;">
+            <div class="step-list">
+
+              <div class="step-item" id="step-parse">
+                <div class="step-circle">1</div>
+                <div class="step-info">
+                  <div class="step-name">상품 파싱</div>
+                  <div class="step-desc">스마트스토어 상품 정보 및 이미지 URL 수집</div>
+                </div>
+              </div>
+
+              <div class="step-item" id="step-image">
+                <div class="step-circle">2</div>
+                <div class="step-info">
+                  <div class="step-name">이미지 다운로드</div>
+                  <div class="step-desc">상품 이미지 최대 3장 로컬 저장</div>
+                </div>
+              </div>
+
+              <div class="step-item" id="step-gemini">
+                <div class="step-circle">3</div>
+                <div class="step-info">
+                  <div class="step-name">Gemini 포스팅 생성</div>
+                  <div class="step-desc">AI가 블로그 제목·본문·태그 작성</div>
+                </div>
+              </div>
+
+              <div class="step-item" id="step-upload">
+                <div class="step-circle">4</div>
+                <div class="step-info">
+                  <div class="step-name">블로그 업로드</div>
+                  <div class="step-desc">Selenium으로 네이버 블로그에 발행</div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        <!-- 완료 결과 카드 (초기 숨김) -->
+        <div class="card" id="run-result-card" style="display:none;">
+          <div class="card-header">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+            <span class="card-header-title">완료 결과</span>
+          </div>
+          <div class="card-body">
+            <ul class="result-list" id="run-result-list"></ul>
+          </div>
+        </div>
+
       </section>
 
       <!-- ③ 로그 보기 탭 -->
       <section id="panel-log" class="panel">
-        <!-- 내용은 JS로 렌더링 -->
+
+        <!-- 툴바 카드 -->
+        <div class="card mb-16">
+          <div class="card-body" style="padding:14px 16px;">
+            <div class="log-toolbar">
+
+              <!-- 필터 버튼 -->
+              <button class="filter-btn active" data-level="ALL">전체</button>
+              <button class="filter-btn info"    data-level="INFO">INFO</button>
+              <button class="filter-btn warning" data-level="WARNING">WARNING</button>
+              <button class="filter-btn error"   data-level="ERROR">ERROR</button>
+
+              <div class="log-toolbar-spacer"></div>
+
+              <!-- 자동 스크롤 토글 -->
+              <label class="autoscroll-toggle" title="자동 스크롤">
+                <input type="checkbox" id="log-autoscroll" checked />
+                <span class="text-sm text-muted">자동 스크롤</span>
+              </label>
+
+              <div style="width:1px; height:16px; background:var(--border-solid);"></div>
+
+              <!-- 저장 버튼 -->
+              <button class="btn btn-ghost btn-sm" id="btn-log-save" title="로그 파일 저장">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="7 10 12 15 17 10"/>
+                  <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                저장
+              </button>
+
+              <!-- 지우기 버튼 -->
+              <button class="btn btn-ghost btn-sm" id="btn-log-clear" title="로그 지우기">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6"/>
+                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                  <path d="M10 11v6M14 11v6"/>
+                </svg>
+                지우기
+              </button>
+
+            </div>
+          </div>
+        </div>
+
+        <!-- 로그 출력 영역 -->
+        <div class="card">
+          <div class="card-header" style="padding:10px 16px;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="2" y="3" width="20" height="14" rx="2"/>
+              <line x1="8" y1="21" x2="16" y2="21"/>
+              <line x1="12" y1="17" x2="12" y2="21"/>
+            </svg>
+            <span class="card-header-title" style="font-size:12.5px;">app.log</span>
+            <span id="log-count" class="text-sm text-muted ml-auto">0개</span>
+            <span id="log-poll-indicator" class="log-poll-dot ml-auto" title="2초마다 갱신"></span>
+          </div>
+          <div class="log-output" id="log-output">
+            <div class="log-empty" id="log-empty">
+              <span style="color:var(--text-disabled);">— 로그가 없습니다 —</span>
+            </div>
+          </div>
+        </div>
+
       </section>
 
       <!-- ④ 설정 탭 -->
