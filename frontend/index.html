@@ -756,6 +756,54 @@
     .text-primary { color: var(--primary); font-weight: 600; }
     .font-mono    { font-family: 'Consolas', monospace; }
 
+    /* ── 페르소나 버튼 ─────────────────────────────────────────────────────── */
+    .persona-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 14px;
+      border-radius: 20px;
+      border: 1.5px solid var(--border-solid);
+      background: var(--surface);
+      color: var(--text-secondary);
+      font-size: 13px;
+      font-weight: 500;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all .15s;
+    }
+
+    .persona-btn:hover {
+      border-color: var(--primary);
+      color: var(--primary);
+      background: var(--primary-dim);
+    }
+
+    .persona-btn.active {
+      border-color: var(--primary);
+      background: var(--primary-dim);
+      color: var(--nav-active-txt);
+      font-weight: 700;
+    }
+
+    /* ── 비밀번호 토글 버튼 ─────────────────────────────────────────────────── */
+    .pw-toggle {
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--text-disabled);
+      padding: 2px;
+      display: flex;
+      align-items: center;
+      transition: color .15s;
+    }
+
+    .pw-toggle:hover { color: var(--text-primary); }
+
     /* ── 스크롤바 ──────────────────────────────────────────────────────────── */
     ::-webkit-scrollbar         { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track   { background: transparent; }
@@ -855,7 +903,141 @@
 
       <!-- ① URL 목록 탭 -->
       <section id="panel-urls" class="panel active">
-        <!-- 내용은 JS로 렌더링 -->
+
+        <!-- URL 입력 카드 -->
+        <div class="card mb-16">
+          <div class="card-header">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+            </svg>
+            <span class="card-header-title">스마트스토어 상품 URL</span>
+            <span class="text-sm text-muted ml-auto">
+              <span id="url-count">0</span> / 10
+            </span>
+          </div>
+          <div class="card-body">
+            <div class="input-action">
+              <input
+                type="url"
+                id="url-input"
+                placeholder="https://smartstore.naver.com/..."
+                autocomplete="off"
+              />
+              <button class="btn btn-primary" id="btn-add-url">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+                추가
+              </button>
+            </div>
+            <p class="text-sm text-muted mt-12" id="url-input-hint">
+              네이버 스마트스토어 상품 URL을 입력하세요. 최대 10개까지 추가할 수 있습니다.
+            </p>
+          </div>
+        </div>
+
+        <!-- URL 리스트 카드 -->
+        <div class="card mb-16">
+          <div class="card-header">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <line x1="8" y1="6" x2="21" y2="6"/>
+              <line x1="8" y1="12" x2="21" y2="12"/>
+              <line x1="8" y1="18" x2="21" y2="18"/>
+              <line x1="3" y1="6" x2="3.01" y2="6"/>
+              <line x1="3" y1="12" x2="3.01" y2="12"/>
+              <line x1="3" y1="18" x2="3.01" y2="18"/>
+            </svg>
+            <span class="card-header-title">등록된 URL 목록</span>
+            <button class="btn btn-ghost btn-sm ml-auto" id="btn-clear-urls">전체 삭제</button>
+          </div>
+          <div class="card-body" style="padding: 12px 16px;">
+
+            <!-- 빈 상태 -->
+            <div class="empty-state" id="url-empty">
+              <div class="empty-icon">🔗</div>
+              <div class="empty-text">추가된 URL이 없습니다<br>위 입력창에서 상품 URL을 추가하세요</div>
+            </div>
+
+            <!-- URL 리스트 -->
+            <ul class="url-list" id="url-list" style="display:none;"></ul>
+
+          </div>
+        </div>
+
+        <!-- 포스팅 설정 카드 -->
+        <div class="card">
+          <div class="card-header">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+            <span class="card-header-title">포스팅 설정</span>
+          </div>
+          <div class="card-body">
+
+            <div class="form-row cols-2 mb-16">
+              <div class="form-group" style="margin-bottom:0;">
+                <label for="cfg-char-count">목표 글자 수</label>
+                <div class="input-action">
+                  <input
+                    type="number"
+                    id="cfg-char-count"
+                    value="1000"
+                    min="300"
+                    max="3000"
+                    step="100"
+                    style="text-align:right;"
+                  />
+                  <span style="
+                    align-self:center;
+                    font-size:13px;
+                    color:var(--text-secondary);
+                    white-space:nowrap;
+                    padding: 0 4px;
+                  ">자</span>
+                </div>
+              </div>
+              <div class="form-group" style="margin-bottom:0;">
+                <label for="cfg-img-count">이미지 첨부 수</label>
+                <div class="input-action">
+                  <input
+                    type="number"
+                    id="cfg-img-count"
+                    value="3"
+                    min="0"
+                    max="10"
+                    style="text-align:right;"
+                  />
+                  <span style="
+                    align-self:center;
+                    font-size:13px;
+                    color:var(--text-secondary);
+                    white-space:nowrap;
+                    padding: 0 4px;
+                  ">장</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-group" style="margin-bottom:0;">
+              <label>페르소나 선택</label>
+              <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:4px;">
+                <button class="persona-btn active" data-persona="blogger">
+                  ✍️ 라이프스타일 블로거
+                </button>
+                <button class="persona-btn" data-persona="expert">
+                  🔍 전문가 리뷰어
+                </button>
+                <button class="persona-btn" data-persona="friendly">
+                  😊 친근한 이웃
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
       </section>
 
       <!-- ② 포스팅 실행 탭 -->
@@ -870,7 +1052,195 @@
 
       <!-- ④ 설정 탭 -->
       <section id="panel-settings" class="panel">
-        <!-- 내용은 JS로 렌더링 -->
+
+        <!-- 네이버 계정 카드 -->
+        <div class="card mb-16">
+          <div class="card-header">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+              <circle cx="12" cy="7" r="4"/>
+            </svg>
+            <span class="card-header-title">네이버 계정</span>
+            <span id="settings-naver-status" class="login-badge logged-out ml-auto" style="font-size:11px; padding:3px 10px;">
+              <span class="login-dot"></span>
+              <span>미저장</span>
+            </span>
+          </div>
+          <div class="card-body">
+            <div class="form-row cols-2 mb-16">
+              <div class="form-group" style="margin-bottom:0;">
+                <label for="cfg-naver-id">네이버 아이디</label>
+                <input
+                  type="text"
+                  id="cfg-naver-id"
+                  placeholder="naver_id"
+                  autocomplete="username"
+                />
+              </div>
+              <div class="form-group" style="margin-bottom:0;">
+                <label for="cfg-naver-pw">비밀번호</label>
+                <div style="position:relative;">
+                  <input
+                    type="password"
+                    id="cfg-naver-pw"
+                    placeholder="••••••••"
+                    autocomplete="current-password"
+                    style="padding-right:40px;"
+                  />
+                  <button
+                    type="button"
+                    class="pw-toggle"
+                    data-target="cfg-naver-pw"
+                    title="비밀번호 표시/숨기기"
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                      <circle cx="12" cy="12" r="3"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="form-group mb-16">
+              <label for="cfg-blog-id">블로그 ID</label>
+              <input
+                type="text"
+                id="cfg-blog-id"
+                placeholder="myblogid  (blog.naver.com/여기부분)"
+                autocomplete="off"
+              />
+              <p class="text-sm text-muted" style="margin-top:6px;">
+                네이버 블로그 URL에서
+                <code style="background:var(--bg); padding:1px 5px; border-radius:3px; font-size:11px;">blog.naver.com/<strong>여기</strong></code>
+                부분을 입력하세요.
+              </p>
+            </div>
+            <div style="display:flex; justify-content:flex-end;">
+              <button class="btn btn-primary" id="btn-save-naver">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                  <polyline points="17 21 17 13 7 13 7 21"/>
+                  <polyline points="7 3 7 8 15 8"/>
+                </svg>
+                저장
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Gemini API 카드 -->
+        <div class="card mb-16">
+          <div class="card-header">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+            </svg>
+            <span class="card-header-title">Gemini API</span>
+            <span id="settings-gemini-status" class="login-badge logged-out ml-auto" style="font-size:11px; padding:3px 10px;">
+              <span class="login-dot"></span>
+              <span>미저장</span>
+            </span>
+          </div>
+          <div class="card-body">
+            <div class="form-group mb-16">
+              <label for="cfg-gemini-key">Gemini API Key</label>
+              <div style="position:relative;">
+                <input
+                  type="password"
+                  id="cfg-gemini-key"
+                  placeholder="AIzaSy..."
+                  autocomplete="off"
+                  class="font-mono"
+                  style="padding-right:40px;"
+                />
+                <button
+                  type="button"
+                  class="pw-toggle"
+                  data-target="cfg-gemini-key"
+                  title="키 표시/숨기기"
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                    <circle cx="12" cy="12" r="3"/>
+                  </svg>
+                </button>
+              </div>
+              <p class="text-sm text-muted" style="margin-top:6px;">
+                Google AI Studio에서 발급받은 API 키를 입력하세요.
+              </p>
+            </div>
+            <div style="display:flex; justify-content:flex-end;">
+              <button class="btn btn-primary" id="btn-save-gemini">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                  <polyline points="17 21 17 13 7 13 7 21"/>
+                  <polyline points="7 3 7 8 15 8"/>
+                </svg>
+                저장
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 네이버 Open API 카드 -->
+        <div class="card">
+          <div class="card-header">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+              <line x1="8" y1="21" x2="16" y2="21"/>
+              <line x1="12" y1="17" x2="12" y2="21"/>
+            </svg>
+            <span class="card-header-title">네이버 Open API <span style="font-weight:400; color:var(--text-secondary);">(선택)</span></span>
+          </div>
+          <div class="card-body">
+            <div class="form-row cols-2 mb-16">
+              <div class="form-group" style="margin-bottom:0;">
+                <label for="cfg-naver-client-id">Client ID</label>
+                <input
+                  type="text"
+                  id="cfg-naver-client-id"
+                  placeholder="naver client id"
+                  autocomplete="off"
+                  class="font-mono"
+                />
+              </div>
+              <div class="form-group" style="margin-bottom:0;">
+                <label for="cfg-naver-client-secret">Client Secret</label>
+                <div style="position:relative;">
+                  <input
+                    type="password"
+                    id="cfg-naver-client-secret"
+                    placeholder="naver client secret"
+                    autocomplete="off"
+                    class="font-mono"
+                    style="padding-right:40px;"
+                  />
+                  <button
+                    type="button"
+                    class="pw-toggle"
+                    data-target="cfg-naver-client-secret"
+                    title="키 표시/숨기기"
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                      <circle cx="12" cy="12" r="3"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div style="display:flex; justify-content:flex-end;">
+              <button class="btn btn-primary" id="btn-save-naver-api">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                  <polyline points="17 21 17 13 7 13 7 21"/>
+                  <polyline points="7 3 7 8 15 8"/>
+                </svg>
+                저장
+              </button>
+            </div>
+          </div>
+        </div>
+
       </section>
 
     </div><!-- /#content -->
