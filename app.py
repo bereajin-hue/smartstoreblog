@@ -1,19 +1,34 @@
 import os
+import re
+import threading
+import webbrowser
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-from dotenv import load_dotenv
 
-from core.credential_manager import save_credentials, load_credentials, delete_credentials
-from core.smartstore_scraper import scrape_product
-from core.gemini_writer import generate_blog_post
-from core.blog_poster import post_to_blog
+from core.credential_manager import CredentialManager
+from core.smartstore_scraper import SmartStoreScraper
+from core.gemini_writer import GeminiWriter
+from core.blog_poster import BlogPoster
 from utils.logger import get_logger
 
-load_dotenv()
 logger = get_logger(__name__)
 
 app = Flask(__name__, static_folder='frontend', static_url_path='')
 CORS(app)
+
+LOG_FILE = os.path.join(os.path.dirname(__file__), 'data', 'app.log')
+
+# 전역 포스팅 작업 상태
+posting_job: dict = {
+    'running': False,
+    'stop_event': threading.Event(),
+    'thread': None,
+    'current_url': '',
+    'progress': 0,
+    'step': '',
+    'done_count': 0,
+    'total_count': 0,
+}
 
 
 # ── 정적 파일 ──────────────────────────────────────────────────────────────────
@@ -25,135 +40,247 @@ def index():
 
 # ── 자격증명 ───────────────────────────────────────────────────────────────────
 
-@app.route('/api/credentials', methods=['GET'])
-def get_credentials():
-    creds = load_credentials()
-    safe = {k: ('●' * 6 if 'pw' in k.lower() or 'password' in k.lower() else v) for k, v in creds.items()}
-    return jsonify({'ok': True, 'data': safe})
-
-
-@app.route('/api/credentials', methods=['POST'])
-def set_credentials():
-    data = request.get_json(force=True)
-    if not data:
-        return jsonify({'ok': False, 'error': '요청 데이터가 없습니다.'}), 400
-    save_credentials(data)
-    return jsonify({'ok': True, 'message': '자격증명이 저장되었습니다.'})
-
-
-@app.route('/api/credentials', methods=['DELETE'])
-def remove_credentials():
-    delete_credentials()
-    return jsonify({'ok': True, 'message': '자격증명이 삭제되었습니다.'})
-
-
-# ── 상품 파싱 ──────────────────────────────────────────────────────────────────
-
-@app.route('/api/scrape', methods=['POST'])
-def scrape():
-    data = request.get_json(force=True)
-    url = (data or {}).get('url', '').strip()
-    if not url:
-        return jsonify({'ok': False, 'error': '상품 URL을 입력하세요.'}), 400
+@app.route('/api/credentials/save', methods=['POST'])
+def credentials_save():
     try:
-        product = scrape_product(url)
-        return jsonify({'ok': True, 'data': product})
+        data = request.get_json(force=True) or {}
+        required = ['naver_id', 'naver_pw', 'blog_id', 'gemini_key']
+        for field in required:
+            if field not in data:
+                return jsonify({'success': False, 'error': f'필수 항목 누락: {field}'}), 400
+        CredentialManager.save(data)
+        logger.info('자격증명 저장 완료')
+        return jsonify({'success': True})
     except Exception as e:
-        logger.error(f'스크래핑 오류: {e}')
-        return jsonify({'ok': False, 'error': str(e)}), 500
+        logger.error(f'자격증명 저장 오류: {e}')
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
-# ── 블로그 포스팅 생성 ──────────────────────────────────────────────────────────
-
-@app.route('/api/generate', methods=['POST'])
-def generate():
-    data = request.get_json(force=True) or {}
-    product = data.get('product')
-    if not product:
-        return jsonify({'ok': False, 'error': '상품 정보가 없습니다.'}), 400
-
-    tone = data.get('tone', 'friendly')
-    keywords = data.get('keywords', [])
-
+@app.route('/api/credentials/load', methods=['GET'])
+def credentials_load():
     try:
-        post = generate_blog_post(product, tone=tone, keywords=keywords)
-        return jsonify({'ok': True, 'data': post})
+        creds = CredentialManager.load()
+        masked = {
+            k: ('••••••••' if 'pw' in k.lower() or 'password' in k.lower() or k == 'gemini_key' else v)
+            for k, v in creds.items()
+        }
+        return jsonify(masked)
     except Exception as e:
-        logger.error(f'포스팅 생성 오류: {e}')
-        return jsonify({'ok': False, 'error': str(e)}), 500
+        logger.error(f'자격증명 로드 오류: {e}')
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
-# ── 블로그 게시 ────────────────────────────────────────────────────────────────
+# ── 포스팅 제어 ────────────────────────────────────────────────────────────────
 
-@app.route('/api/post', methods=['POST'])
-def post():
-    data = request.get_json(force=True) or {}
-    title = data.get('title', '').strip()
-    body = data.get('body', '').strip()
-    images = data.get('images', [])
+@app.route('/api/posting/start', methods=['POST'])
+def posting_start():
+    try:
+        if posting_job['running']:
+            return jsonify({'success': False, 'error': '이미 포스팅이 실행 중입니다.'}), 409
 
-    if not title or not body:
-        return jsonify({'ok': False, 'error': '제목과 본문이 필요합니다.'}), 400
+        data = request.get_json(force=True) or {}
+        urls = data.get('urls', [])
+        if not urls:
+            return jsonify({'success': False, 'error': 'URL 목록이 비어 있습니다.'}), 400
 
-    creds = load_credentials()
+        posting_job['stop_event'].clear()
+        posting_job['done_count'] = 0
+        posting_job['total_count'] = len(urls)
+        posting_job['progress'] = 0
+        posting_job['step'] = '시작 중...'
+        posting_job['current_url'] = ''
+
+        t = threading.Thread(target=_run_posting, args=(urls,), daemon=True)
+        posting_job['thread'] = t
+        posting_job['running'] = True
+        t.start()
+
+        logger.info(f'포스팅 작업 시작 - 총 {len(urls)}개 URL')
+        return jsonify({'success': True, 'message': '포스팅 시작됨'})
+    except Exception as e:
+        logger.error(f'포스팅 시작 오류: {e}')
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/posting/stop', methods=['POST'])
+def posting_stop():
+    try:
+        posting_job['stop_event'].set()
+        logger.info('포스팅 중단 요청')
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f'포스팅 중단 오류: {e}')
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/posting/status', methods=['GET'])
+def posting_status():
+    return jsonify({
+        'running': posting_job['running'],
+        'current_url': posting_job['current_url'],
+        'progress': posting_job['progress'],
+        'step': posting_job['step'],
+        'done_count': posting_job['done_count'],
+        'total_count': posting_job['total_count'],
+    })
+
+
+# ── 로그 ───────────────────────────────────────────────────────────────────────
+
+@app.route('/api/logs', methods=['GET'])
+def get_logs():
+    try:
+        level_filter = request.args.get('level', 'ALL').upper()
+        limit = min(int(request.args.get('limit', 200)), 1000)
+
+        if not os.path.exists(LOG_FILE):
+            return jsonify({'logs': []})
+
+        with open(LOG_FILE, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+
+        # 최신 줄부터 limit 개 처리
+        recent = lines[-limit:] if len(lines) > limit else lines
+
+        log_pattern = re.compile(
+            r'\[(?P<time>[^\]]+)\]\s+(?P<level>DEBUG|INFO|WARNING|ERROR|CRITICAL)\s+(?P<msg>.*)'
+        )
+        entries = []
+        for line in recent:
+            line = line.strip()
+            if not line:
+                continue
+            m = log_pattern.match(line)
+            if m:
+                entry = m.groupdict()
+            else:
+                entry = {'time': '', 'level': 'INFO', 'msg': line}
+
+            if level_filter == 'ALL' or entry['level'] == level_filter:
+                entries.append(entry)
+
+        return jsonify({'logs': entries})
+    except Exception as e:
+        logger.error(f'로그 조회 오류: {e}')
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/logs', methods=['DELETE'])
+def clear_logs():
+    try:
+        if os.path.exists(LOG_FILE):
+            open(LOG_FILE, 'w').close()
+        logger.info('로그 파일 초기화')
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f'로그 삭제 오류: {e}')
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ── 포스팅 워커 ────────────────────────────────────────────────────────────────
+
+def _update_status(step: str, done: int, total: int, current_url: str = '') -> None:
+    posting_job['step'] = step
+    posting_job['done_count'] = done
+    posting_job['current_url'] = current_url
+    posting_job['progress'] = int(done / total * 100) if total else 0
+
+
+def _run_posting(urls: list[str]) -> None:
+    total = len(urls)
+    creds = CredentialManager.load()
     naver_id = creds.get('naver_id', '')
     naver_pw = creds.get('naver_pw', '')
+    blog_id = creds.get('blog_id', '')
+    gemini_key = creds.get('gemini_key', '')
 
-    if not naver_id or not naver_pw:
-        return jsonify({'ok': False, 'error': '네이버 로그인 정보를 먼저 저장하세요.'}), 400
-
-    try:
-        result = post_to_blog(naver_id, naver_pw, title, body, images)
-        if result['success']:
-            return jsonify({'ok': True, 'post_url': result.get('post_url', '')})
-        return jsonify({'ok': False, 'error': result.get('error', '알 수 없는 오류')}), 500
-    except Exception as e:
-        logger.error(f'블로그 게시 오류: {e}')
-        return jsonify({'ok': False, 'error': str(e)}), 500
-
-
-# ── 전체 자동화 파이프라인 ──────────────────────────────────────────────────────
-
-@app.route('/api/automate', methods=['POST'])
-def automate():
-    data = request.get_json(force=True) or {}
-    url = data.get('url', '').strip()
-    tone = data.get('tone', 'friendly')
-    keywords = data.get('keywords', [])
-
-    if not url:
-        return jsonify({'ok': False, 'error': '상품 URL을 입력하세요.'}), 400
+    scraper = SmartStoreScraper()
+    writer = GeminiWriter(api_key=gemini_key)
+    poster = BlogPoster()
 
     try:
-        logger.info('전체 자동화 파이프라인 시작')
-        product = scrape_product(url)
-        post = generate_blog_post(product, tone=tone, keywords=keywords)
+        for idx, url in enumerate(urls):
+            if posting_job['stop_event'].is_set():
+                logger.info('포스팅 중단됨 (사용자 요청)')
+                break
 
-        creds = load_credentials()
-        naver_id = creds.get('naver_id', '')
-        naver_pw = creds.get('naver_pw', '')
+            logger.info(f'[{idx + 1}/{total}] 처리 시작: {url}')
 
-        if not naver_id or not naver_pw:
-            return jsonify({
-                'ok': False,
-                'error': '네이버 로그인 정보를 먼저 저장하세요.',
-                'product': product,
-                'post': post,
-            }), 400
+            # 1. 상품 파싱
+            _update_status('상품 정보 파싱 중...', idx, total, url)
+            try:
+                product_info = scraper.parse_product(url)
+                logger.info(f'상품 파싱 완료: {product_info.get("title", "")}')
+            except Exception as e:
+                logger.error(f'상품 파싱 실패 ({url}): {e}')
+                continue
 
-        result = post_to_blog(naver_id, naver_pw, post['title'], post['body'], product.get('images', []))
-        return jsonify({
-            'ok': result['success'],
-            'product': product,
-            'post': post,
-            'post_url': result.get('post_url', ''),
-            'error': result.get('error', ''),
-        })
+            if posting_job['stop_event'].is_set():
+                break
+
+            # 2. 이미지 다운로드 (최대 3장)
+            _update_status('이미지 다운로드 중...', idx, total, url)
+            try:
+                image_paths = scraper.download_images(product_info.get('images', []), max_count=3)
+                logger.info(f'이미지 {len(image_paths)}장 다운로드 완료')
+            except Exception as e:
+                logger.warning(f'이미지 다운로드 실패 ({url}): {e}')
+                image_paths = []
+
+            if posting_job['stop_event'].is_set():
+                break
+
+            # 3. 포스팅 생성
+            _update_status('AI 포스팅 작성 중...', idx, total, url)
+            try:
+                post = writer.generate_post(product_info)
+                logger.info(f'포스팅 생성 완료: {post.get("title", "")}')
+            except Exception as e:
+                logger.error(f'포스팅 생성 실패 ({url}): {e}')
+                continue
+
+            if posting_job['stop_event'].is_set():
+                break
+
+            # 4. 블로그 게시
+            _update_status('블로그에 게시 중...', idx, total, url)
+            try:
+                poster.login(naver_id, naver_pw)
+                post_url = poster.post_to_blog(
+                    blog_id=blog_id,
+                    title=post['title'],
+                    body=post['body'],
+                    image_paths=image_paths,
+                )
+                logger.info(f'게시 완료: {post_url}')
+            except Exception as e:
+                logger.error(f'블로그 게시 실패 ({url}): {e}')
+                continue
+            finally:
+                poster.quit()
+
+            posting_job['done_count'] = idx + 1
+            _update_status(f'{idx + 1}번째 포스팅 완료', idx + 1, total, url)
+
     except Exception as e:
-        logger.error(f'자동화 파이프라인 오류: {e}')
-        return jsonify({'ok': False, 'error': str(e)}), 500
+        logger.error(f'포스팅 워커 예외: {e}')
+    finally:
+        posting_job['running'] = False
+        posting_job['progress'] = 100 if posting_job['done_count'] == total else posting_job['progress']
+        posting_job['step'] = '완료' if not posting_job['stop_event'].is_set() else '중단됨'
+        logger.info(
+            f'포스팅 작업 종료 - 완료: {posting_job["done_count"]}/{total}'
+        )
+
+
+# ── 진입점 ─────────────────────────────────────────────────────────────────────
+
+def _open_browser() -> None:
+    webbrowser.open('http://127.0.0.1:5000')
 
 
 if __name__ == '__main__':
-    logger.info('Flask 서버 시작 - http://localhost:5000')
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    logger.info('Flask 서버 시작 - http://127.0.0.1:5000')
+    # use_reloader=False 로 브라우저가 두 번 열리는 것 방지
+    threading.Timer(1.2, _open_browser).start()
+    app.run(host='127.0.0.1', port=5000, debug=False, use_reloader=False)

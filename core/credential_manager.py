@@ -23,30 +23,33 @@ def _get_or_create_key() -> bytes:
     return key
 
 
-def save_credentials(data: dict) -> None:
-    key = _get_or_create_key()
-    fernet = Fernet(key)
-    encrypted = fernet.encrypt(json.dumps(data).encode('utf-8'))
-    with open(CRED_FILE, 'wb') as f:
-        f.write(encrypted)
-    logger.info('자격증명을 저장했습니다.')
+class CredentialManager:
 
+    @staticmethod
+    def save(data: dict) -> None:
+        key = _get_or_create_key()
+        fernet = Fernet(key)
+        encrypted = fernet.encrypt(json.dumps(data).encode('utf-8'))
+        with open(CRED_FILE, 'wb') as f:
+            f.write(encrypted)
+        logger.info('자격증명을 저장했습니다.')
 
-def load_credentials() -> dict:
-    if not os.path.exists(CRED_FILE):
-        return {}
-    key = _get_or_create_key()
-    fernet = Fernet(key)
-    with open(CRED_FILE, 'rb') as f:
-        encrypted = f.read()
-    try:
-        return json.loads(fernet.decrypt(encrypted).decode('utf-8'))
-    except Exception:
-        logger.error('자격증명 복호화에 실패했습니다.')
-        return {}
+    @staticmethod
+    def load() -> dict:
+        if not os.path.exists(CRED_FILE):
+            return {}
+        key = _get_or_create_key()
+        fernet = Fernet(key)
+        with open(CRED_FILE, 'rb') as f:
+            encrypted = f.read()
+        try:
+            return json.loads(fernet.decrypt(encrypted).decode('utf-8'))
+        except Exception:
+            logger.error('자격증명 복호화에 실패했습니다.')
+            return {}
 
-
-def delete_credentials() -> None:
-    if os.path.exists(CRED_FILE):
-        os.remove(CRED_FILE)
-        logger.info('자격증명을 삭제했습니다.')
+    @staticmethod
+    def delete() -> None:
+        if os.path.exists(CRED_FILE):
+            os.remove(CRED_FILE)
+            logger.info('자격증명을 삭제했습니다.')

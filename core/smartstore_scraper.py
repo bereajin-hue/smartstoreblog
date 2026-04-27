@@ -18,83 +18,106 @@ HEADERS = {
 }
 
 
-def scrape_product(url: str) -> dict:
-    """네이버 스마트스토어 상품 페이지에서 정보를 파싱합니다."""
-    logger.info(f'상품 페이지 파싱 시작: {url}')
-    resp = requests.get(url, headers=HEADERS, timeout=15)
-    resp.raise_for_status()
+class SmartStoreScraper:
 
-    soup = BeautifulSoup(resp.text, 'lxml')
+    def parse_product(self, url: str) -> dict:
+        """네이버 스마트스토어 상품 페이지에서 정보를 파싱합니다."""
+        logger.info(f'상품 페이지 파싱 시작: {url}')
+        resp = requests.get(url, headers=HEADERS, timeout=15)
+        resp.raise_for_status()
 
-    title = _extract_title(soup)
-    price = _extract_price(soup)
-    description = _extract_description(soup)
-    images = _extract_images(soup, url)
+        soup = BeautifulSoup(resp.text, 'lxml')
 
-    logger.info(f'파싱 완료 - 상품명: {title}, 이미지 수: {len(images)}')
-    return {
-        'url': url,
-        'title': title,
-        'price': price,
-        'description': description,
-        'images': images,
-    }
+        title = self._extract_title(soup)
+        price = self._extract_price(soup)
+        description = self._extract_description(soup)
+        image_urls = self._extract_image_urls(soup, url)
 
+        logger.info(f'파싱 완료 - 상품명: {title}, 이미지 수: {len(image_urls)}')
+        return {
+            'url': url,
+            'title': title,
+            'price': price,
+            'description': description,
+            'images': image_urls,
+        }
 
-def _extract_title(soup: BeautifulSoup) -> str:
-    selectors = [
-        ('meta', {'property': 'og:title'}),
-    ]
-    tag = soup.find('h3', {'class': re.compile(r'productName')})
-    if tag:
-        return tag.get_text(strip=True)
-    tag = soup.find('meta', {'property': 'og:title'})
-    if tag:
-        return tag.get('content', '').strip()
-    return ''
+    def download_images(self, image_urls: list[str], max_count: int = 3) -> list[str]:
+        """이미지 URL 목록에서 최대 max_count장을 로컬에 저장하고 경로 목록을 반환합니다."""
+        os.makedirs(IMAGE_DIR, exist_ok=True)
+        paths = []
+        for i, url in enumerate(image_urls[:max_count]):
+            try:
+                resp = requests.get(url, headers=HEADERS, timeout=10)
+                resp.raise_for_status()
+                ext = self._guess_ext(url)
+                filename = f'img_{i}{ext}'
+                path = os.path.join(IMAGE_DIR, filename)
+                with open(path, 'wb') as f:
+                    f.write(resp.content)
+                paths.append(path)
+                logger.info(f'이미지 다운로드: {filename}')
+            except Exception as e:
+                logger.warning(f'이미지 다운로드 실패 ({url}): {e}')
+        return paths
 
+    # ── 내부 파싱 헬퍼 ────────────────────────────────────────────────────────
 
-def _extract_price(soup: BeautifulSoup) -> str:
-    tag = soup.find('span', {'class': re.compile(r'price|Price')})
-    if tag:
-        text = tag.get_text(strip=True)
-        numbers = re.sub(r'[^\d]', '', text)
-        if numbers:
-            return f'{int(numbers):,}원'
-    return ''
+    def _extract_title(self, soup: BeautifulSoup) -> str:
+        tag = soup.find('h3', {'class': re.compile(r'productName', re.I)})
+        if tag:
+            return tag.get_text(strip=True)
+        tag = soup.find('meta', {'property': 'og:title'})
+        if tag:
+            return tag.get('content', '').strip()
+        return ''
 
+    def _extract_price(self, soup: BeautifulSoup) -> str:
+        tag = soup.find('span', {'class': re.compile(r'price|Price', re.I)})
+        if tag:
+            numbers = re.sub(r'[^\d]', '', tag.get_text())
+            if numbers:
+                return f'{int(numbers):,}원'
+        return ''
 
-def _extract_description(soup: BeautifulSoup) -> str:
-    tag = soup.find('meta', {'name': 'description'}) or soup.find('meta', {'property': 'og:description'})
-    if tag:
-        return tag.get('content', '').strip()
-    return ''
+    def _extract_description(self, soup: BeautifulSoup) -> str:
+        tag = (
+            soup.find('meta', {'name': 'description'})
+            or soup.find('meta', {'property': 'og:description'})
+        )
+        if tag:
+            return tag.get('content', '').strip()
+        return ''
 
+    def _extract_image_urls(self, soup: BeautifulSoup, base_url: str) -> list[str]:
+        images: list[str] = []
 
-def _extract_images(soup: BeautifulSoup, base_url: str) -> list[str]:
-    os.makedirs(IMAGE_DIR, exist_ok=True)
-    images = []
+        og = soup.find('meta', {'property': 'og:image'})
+        if og and og.get('content'):
+            images.append(og['content'])
 
-    og_image = soup.find('meta', {'property': 'og:image'})
-    if og_image:
-        src = og_image.get('content', '')
-        if src:
-            images.append(src)
+        parsed = urlparse(base_url)
+        for img in soup.find_all('img', src=True):
+            src = img['src']
+            if src.startswith('//'):
+                src = f'{parsed.scheme}:{src}'
+            elif not src.startswith('http'):
+                src = f'{parsed.scheme}://{parsed.netloc}{src}'
+            if src not in images and self._is_product_image(src):
+                images.append(src)
+            if len(images) >= 10:
+                break
 
-    for img in soup.find_all('img', src=True):
-        src = img['src']
-        if not src.startswith('http'):
-            parsed = urlparse(base_url)
-            src = f'{parsed.scheme}://{parsed.netloc}{src}'
-        if src not in images and _is_product_image(src):
-            images.append(src)
-        if len(images) >= 10:
-            break
+        return images
 
-    return images
+    def _is_product_image(self, url: str) -> bool:
+        exclude = ['logo', 'icon', 'banner', 'button', 'blank', 'pixel', 'loading']
+        lower = url.lower()
+        return not any(p in lower for p in exclude)
 
-
-def _is_product_image(url: str) -> bool:
-    exclude_patterns = ['logo', 'icon', 'banner', 'button', 'blank', 'pixel']
-    lower = url.lower()
-    return not any(p in lower for p in exclude_patterns)
+    def _guess_ext(self, url: str) -> str:
+        lower = url.lower().split('?')[0]
+        for ext in ['.jpg', '.jpeg', '.png', '.webp', '.gif']:
+            if lower.endswith(ext):
+                return ext
+        return '.jpg'
