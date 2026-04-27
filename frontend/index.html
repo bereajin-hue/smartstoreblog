@@ -1547,5 +1547,573 @@
 <!-- 토스트 컨테이너 -->
 <div id="toast-wrap"></div>
 
+<script>
+'use strict';
+
+/* ═══════════════════════════════════════════════════════
+   상수 / 전역 상태
+═══════════════════════════════════════════════════════ */
+const API = 'http://127.0.0.1:5000';
+const MAX_URLS = 10;
+
+const PANEL_META = {
+  urls:     { title: 'URL 목록',     sub: '포스팅할 상품 URL을 추가하세요' },
+  run:      { title: '포스팅 실행',  sub: '시작 버튼을 눌러 자동 포스팅을 실행하세요' },
+  log:      { title: '로그 보기',    sub: '실시간 실행 로그를 확인합니다' },
+  settings: { title: '설정',         sub: '네이버 계정 및 API 키를 저장하세요' },
+};
+
+const STEP_MAP = {
+  '상품 정보 파싱 중...': 'parse',
+  '이미지 다운로드 중...': 'image',
+  'AI 포스팅 작성 중...': 'gemini',
+  '블로그에 게시 중...': 'upload',
+};
+
+let urlList = [];          // { url, status: 'idle'|'running'|'done'|'error' }
+let logLevel = 'ALL';      // 현재 로그 필터
+let logCache = [];         // 마지막 로그 배열 (필터 재적용용)
+let statusTimer = null;    // 1초 폴링 타이머
+let logTimer = null;       // 2초 폴링 타이머
+let isRunning = false;
+
+/* ═══════════════════════════════════════════════════════
+   유틸리티
+═══════════════════════════════════════════════════════ */
+function $(id) { return document.getElementById(id); }
+
+function toast(msg, type = 'info', duration = 3000) {
+  const wrap = $('toast-wrap');
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = msg;
+  wrap.appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translateY(6px)';
+    el.style.transition = 'all .3s'; setTimeout(() => el.remove(), 320); }, duration);
+}
+
+async function apiFetch(path, opts = {}) {
+  const res = await fetch(API + path, {
+    headers: { 'Content-Type': 'application/json' },
+    ...opts,
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+/* ═══════════════════════════════════════════════════════
+   탭 전환
+═══════════════════════════════════════════════════════ */
+function showPanel(id) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+
+  const panel = $(`panel-${id}`);
+  if (panel) panel.classList.add('active');
+
+  const navBtn = document.querySelector(`.nav-item[data-panel="${id}"]`);
+  if (navBtn) navBtn.classList.add('active');
+
+  const meta = PANEL_META[id] || {};
+  $('topbar-title').textContent = meta.title || id;
+  $('topbar-sub').textContent   = meta.sub   || '';
+}
+
+/* ═══════════════════════════════════════════════════════
+   URL 목록 관리
+═══════════════════════════════════════════════════════ */
+function renderUrlList() {
+  const list  = $('url-list');
+  const empty = $('url-empty');
+  const count = $('url-count');
+  const badge = $('nav-badge-urls');
+
+  count.textContent = urlList.length;
+  badge.textContent = urlList.length;
+
+  if (urlList.length === 0) {
+    list.style.display  = 'none';
+    empty.style.display = '';
+    return;
+  }
+
+  empty.style.display = 'none';
+  list.style.display  = 'flex';
+  list.innerHTML = '';
+
+  urlList.forEach((item, idx) => {
+    const li = document.createElement('li');
+    li.className = 'url-item';
+    li.dataset.idx = idx;
+    li.innerHTML = `
+      <span class="url-num">${idx + 1}</span>
+      <span class="url-text" title="${item.url}">${item.url}</span>
+      <span class="status-dot ${item.status}"></span>
+      <button class="btn btn-ghost btn-sm del-btn" data-idx="${idx}" title="삭제">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>`;
+    list.appendChild(li);
+  });
+
+  list.querySelectorAll('.del-btn').forEach(btn => {
+    btn.addEventListener('click', () => delUrl(+btn.dataset.idx));
+  });
+}
+
+function addUrl() {
+  const input = $('url-input');
+  const raw = input.value.trim();
+
+  if (!raw) { toast('URL을 입력하세요.', 'warning'); return; }
+  if (!raw.includes('smartstore.naver.com')) {
+    toast('스마트스토어 URL만 추가할 수 있습니다.', 'error'); return;
+  }
+  if (urlList.length >= MAX_URLS) {
+    toast(`최대 ${MAX_URLS}개까지 추가할 수 있습니다.`, 'warning'); return;
+  }
+  if (urlList.some(u => u.url === raw)) {
+    toast('이미 추가된 URL입니다.', 'warning'); return;
+  }
+
+  urlList.push({ url: raw, status: 'idle' });
+  input.value = '';
+  renderUrlList();
+  toast('URL이 추가됐습니다.', 'ok');
+}
+
+function delUrl(idx) {
+  urlList.splice(idx, 1);
+  renderUrlList();
+}
+
+function clearAllUrls() {
+  if (urlList.length === 0) return;
+  if (!confirm('등록된 URL을 모두 삭제할까요?')) return;
+  urlList = [];
+  renderUrlList();
+}
+
+/* ═══════════════════════════════════════════════════════
+   설정 저장 / 불러오기
+═══════════════════════════════════════════════════════ */
+function setSettingsBadge(id, saved) {
+  const el = $(id);
+  if (!el) return;
+  el.className = `login-badge ${saved ? 'logged-in' : 'logged-out'} ml-auto`;
+  el.style.cssText = 'font-size:11px; padding:3px 10px;';
+  el.innerHTML = `<span class="login-dot"></span><span>${saved ? '저장됨' : '미저장'}</span>`;
+}
+
+function setLoginBadge(loggedIn, idText = '') {
+  const badge = $('login-badge');
+  badge.className = `login-badge ${loggedIn ? 'logged-in' : 'logged-out'}`;
+  $('login-label').textContent = loggedIn ? `${idText} 저장됨` : '로그인 안됨';
+}
+
+async function loadCredentials() {
+  try {
+    const data = await apiFetch('/api/credentials/load');
+    if (data.naver_id)            $('cfg-naver-id').value  = data.naver_id;
+    if (data.naver_pw)            $('cfg-naver-pw').value  = data.naver_pw;
+    if (data.blog_id)             $('cfg-blog-id').value   = data.blog_id;
+    if (data.gemini_key)          $('cfg-gemini-key').value = data.gemini_key;
+    if (data.naver_client_id)     $('cfg-naver-client-id').value     = data.naver_client_id;
+    if (data.naver_client_secret) $('cfg-naver-client-secret').value = data.naver_client_secret;
+
+    const hasNaver  = !!(data.naver_id && data.naver_pw && data.blog_id);
+    const hasGemini = !!data.gemini_key;
+    setSettingsBadge('settings-naver-status',  hasNaver);
+    setSettingsBadge('settings-gemini-status', hasGemini);
+    setLoginBadge(hasNaver, data.naver_id || '');
+  } catch (e) {
+    // 서버가 아직 없을 경우 조용히 무시
+  }
+}
+
+async function saveNaverCreds() {
+  const id     = $('cfg-naver-id').value.trim();
+  const pw     = $('cfg-naver-pw').value;
+  const blogId = $('cfg-blog-id').value.trim();
+  if (!id || !pw || !blogId) { toast('아이디, 비밀번호, 블로그 ID를 모두 입력하세요.', 'warning'); return; }
+
+  const existing = await safeFetchCreds();
+  await saveAllCreds({ ...existing, naver_id: id, naver_pw: pw, blog_id: blogId });
+  setSettingsBadge('settings-naver-status', true);
+  setLoginBadge(true, id);
+  toast('네이버 계정이 저장됐습니다.', 'ok');
+}
+
+async function saveGeminiCreds() {
+  const key = $('cfg-gemini-key').value.trim();
+  if (!key) { toast('Gemini API Key를 입력하세요.', 'warning'); return; }
+
+  const existing = await safeFetchCreds();
+  await saveAllCreds({ ...existing, gemini_key: key });
+  setSettingsBadge('settings-gemini-status', true);
+  toast('Gemini API Key가 저장됐습니다.', 'ok');
+}
+
+async function saveNaverApiCreds() {
+  const clientId     = $('cfg-naver-client-id').value.trim();
+  const clientSecret = $('cfg-naver-client-secret').value.trim();
+  if (!clientId || !clientSecret) { toast('Client ID와 Secret을 입력하세요.', 'warning'); return; }
+
+  const existing = await safeFetchCreds();
+  await saveAllCreds({ ...existing, naver_client_id: clientId, naver_client_secret: clientSecret });
+  toast('네이버 Open API 키가 저장됐습니다.', 'ok');
+}
+
+async function safeFetchCreds() {
+  try { return await apiFetch('/api/credentials/load'); } catch { return {}; }
+}
+
+async function saveAllCreds(data) {
+  await apiFetch('/api/credentials/save', { method: 'POST', body: JSON.stringify(data) });
+}
+
+/* ═══════════════════════════════════════════════════════
+   포스팅 시작 / 중지
+═══════════════════════════════════════════════════════ */
+async function startPosting() {
+  if (urlList.length === 0) { toast('URL을 먼저 추가하세요.', 'warning'); return; }
+
+  const btn = $('btn-run-start');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> 시작 중...';
+
+  try {
+    const urls = urlList.map(u => u.url);
+    const res = await apiFetch('/api/posting/start', {
+      method: 'POST',
+      body: JSON.stringify({ urls }),
+    });
+    if (!res.success) throw new Error(res.error || '시작 실패');
+
+    isRunning = true;
+    $('btn-run-stop').disabled = false;
+    setRunBadge('running', '실행 중');
+    resetSteps();
+    startPolling();
+    toast('포스팅을 시작했습니다.', 'ok');
+  } catch (e) {
+    toast(`시작 실패: ${e.message}`, 'error');
+    btn.disabled = false;
+    btn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg> 포스팅 시작`;
+  }
+}
+
+async function stopPosting() {
+  try {
+    await apiFetch('/api/posting/stop', { method: 'POST' });
+    toast('중단 요청을 보냈습니다.', 'info');
+  } catch (e) {
+    toast(`중단 요청 실패: ${e.message}`, 'error');
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   상태 폴링 (1초)
+═══════════════════════════════════════════════════════ */
+function startPolling() {
+  stopPolling();
+  statusTimer = setInterval(pollStatus, 1000);
+  logTimer    = setInterval(pollLogs,   2000);
+  pollStatus();
+  pollLogs();
+}
+
+function stopPolling() {
+  clearInterval(statusTimer);
+  clearInterval(logTimer);
+}
+
+async function pollStatus() {
+  try {
+    const s = await apiFetch('/api/posting/status');
+
+    // 진행률 바
+    const pct = s.progress || 0;
+    $('run-progress-bar').style.width  = pct + '%';
+    $('run-progress-pct').textContent  = pct + '%';
+    $('run-progress-text').textContent = `${s.done_count} / ${s.total_count}`;
+    $('run-step-label').textContent    = s.step || '-';
+
+    // 현재 URL
+    const curUrl = s.current_url || '-';
+    $('run-current-url').textContent = curUrl;
+
+    // URL 리스트 상태 점 업데이트
+    if (s.current_url) {
+      urlList.forEach(u => {
+        if (u.url === s.current_url && u.status === 'idle') u.status = 'running';
+      });
+      renderUrlList();
+    }
+
+    // 단계 하이라이트
+    const stepKey = STEP_MAP[s.step];
+    if (stepKey) activateStep(stepKey);
+
+    // 완료 처리
+    if (!s.running && isRunning) {
+      isRunning = false;
+      stopPolling();
+      onPostingFinished(s);
+    }
+  } catch { /* 서버 응답 없음 — 무시 */ }
+}
+
+/* ═══════════════════════════════════════════════════════
+   로그 폴링 (2초)
+═══════════════════════════════════════════════════════ */
+async function pollLogs() {
+  const indicator = $('log-poll-indicator');
+  try {
+    const data = await apiFetch(`/api/logs?level=ALL&limit=200`);
+    logCache = data.logs || [];
+    renderLogs();
+
+    // 폴링 인디케이터 깜빡
+    indicator.classList.add('active');
+    setTimeout(() => indicator.classList.remove('active'), 400);
+  } catch { /* 무시 */ }
+}
+
+function renderLogs() {
+  const output = $('log-output');
+  const empty  = $('log-empty');
+  const count  = $('log-count');
+
+  const filtered = logLevel === 'ALL'
+    ? logCache
+    : logCache.filter(l => l.level === logLevel);
+
+  count.textContent = `${filtered.length}개`;
+
+  if (filtered.length === 0) {
+    output.innerHTML = '';
+    const div = document.createElement('div');
+    div.className = 'log-empty';
+    div.innerHTML = `<span style="color:var(--text-disabled);">— 로그가 없습니다 —</span>`;
+    output.appendChild(div);
+    return;
+  }
+
+  const autoScroll = $('log-autoscroll').checked;
+  const wasAtBottom = output.scrollHeight - output.scrollTop - output.clientHeight < 40;
+
+  output.innerHTML = filtered.map(l => {
+    const lvl  = (l.level || 'INFO').toUpperCase();
+    const cls  = lvl === 'ERROR' ? 'is-error' : lvl === 'WARNING' ? 'is-warning' : '';
+    const time = l.time ? `<span class="log-time">${l.time}</span>` : '';
+    return `<div class="log-line ${cls}">
+      ${time}
+      <span class="log-level ${lvl}">${lvl}</span>
+      <span class="log-msg">${escapeHtml(l.msg || '')}</span>
+    </div>`;
+  }).join('');
+
+  if (autoScroll && wasAtBottom) output.scrollTop = output.scrollHeight;
+}
+
+function escapeHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function setLogFilter(level) {
+  logLevel = level;
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.level === level);
+  });
+  renderLogs();
+}
+
+function clearLogs() {
+  if (!confirm('로그를 모두 지울까요?')) return;
+  apiFetch('/api/logs', { method: 'DELETE' })
+    .then(() => { logCache = []; renderLogs(); toast('로그를 지웠습니다.', 'ok'); })
+    .catch(e => toast(`삭제 실패: ${e.message}`, 'error'));
+}
+
+function saveLogs() {
+  const text = logCache.map(l => `[${l.time}] ${l.level}  ${l.msg}`).join('\n');
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `app_${new Date().toISOString().slice(0,10)}.log`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast('로그 파일을 저장했습니다.', 'ok');
+}
+
+/* ═══════════════════════════════════════════════════════
+   단계 리스트 UI
+═══════════════════════════════════════════════════════ */
+const STEP_IDS = ['parse', 'image', 'gemini', 'upload'];
+
+function resetSteps() {
+  STEP_IDS.forEach(id => {
+    const el = $(`step-${id}`);
+    if (el) el.className = 'step-item';
+  });
+  $('run-result-card').style.display = 'none';
+  $('run-result-list').innerHTML = '';
+}
+
+function activateStep(key) {
+  const idx = STEP_IDS.indexOf(key);
+  if (idx < 0) return;
+  STEP_IDS.forEach((id, i) => {
+    const el = $(`step-${id}`);
+    if (!el) return;
+    if (i < idx)      el.className = 'step-item done';
+    else if (i === idx) el.className = 'step-item active';
+    else              el.className = 'step-item';
+  });
+}
+
+function onPostingFinished(s) {
+  const done = s.done_count || 0;
+  const total = s.total_count || 0;
+  const stopped = (s.step === '중단됨');
+
+  setRunBadge(stopped ? 'idle' : 'done', stopped ? '중단됨' : '완료');
+
+  // 모든 단계 완료 표시
+  if (!stopped) STEP_IDS.forEach(id => {
+    const el = $(`step-${id}`);
+    if (el) el.className = 'step-item done';
+  });
+
+  // URL 상태 업데이트
+  urlList.forEach(u => { if (u.status === 'running') u.status = stopped ? 'idle' : 'done'; });
+  renderUrlList();
+
+  // 시작 버튼 복원
+  const btn = $('btn-run-start');
+  btn.disabled = false;
+  btn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg> 포스팅 시작`;
+  $('btn-run-stop').disabled = true;
+
+  // 완료 결과 카드
+  const resultCard = $('run-result-card');
+  const resultList = $('run-result-list');
+  resultList.innerHTML = '';
+  urlList.forEach(u => {
+    const li = document.createElement('li');
+    li.className = `result-item ${u.status === 'done' ? 'ok' : 'error'}`;
+    li.innerHTML = `
+      <span class="result-item-icon">${u.status === 'done' ? '✓' : '✗'}</span>
+      <span class="result-item-url" title="${u.url}">${u.url}</span>
+      <span class="result-item-msg">${u.status === 'done' ? '게시 완료' : '처리 안됨'}</span>`;
+    resultList.appendChild(li);
+  });
+  resultCard.style.display = 'block';
+
+  toast(stopped ? `포스팅이 중단됐습니다. (${done}/${total})` : `포스팅 완료! (${done}/${total})`,
+        stopped ? 'warning' : 'ok', 5000);
+}
+
+function setRunBadge(state, label) {
+  const el = $('run-status-badge');
+  el.className = `run-badge ${state} ml-auto`;
+  el.textContent = label;
+}
+
+/* ═══════════════════════════════════════════════════════
+   비밀번호 토글
+═══════════════════════════════════════════════════════ */
+function initPwToggles() {
+  document.querySelectorAll('.pw-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const input = $(btn.dataset.target);
+      if (!input) return;
+      input.type = input.type === 'password' ? 'text' : 'password';
+    });
+  });
+}
+
+/* ═══════════════════════════════════════════════════════
+   페르소나 버튼
+═══════════════════════════════════════════════════════ */
+function initPersonaBtns() {
+  document.querySelectorAll('.persona-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.persona-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+}
+
+/* ═══════════════════════════════════════════════════════
+   이벤트 바인딩
+═══════════════════════════════════════════════════════ */
+function bindEvents() {
+  // 사이드바 탭 전환
+  document.querySelectorAll('.nav-item[data-panel]').forEach(btn => {
+    btn.addEventListener('click', () => showPanel(btn.dataset.panel));
+  });
+
+  // topbar 로그인 버튼 → 설정 탭으로 이동
+  $('btn-login').addEventListener('click', () => showPanel('settings'));
+
+  // URL 추가
+  $('btn-add-url').addEventListener('click', addUrl);
+  $('url-input').addEventListener('keydown', e => { if (e.key === 'Enter') addUrl(); });
+  $('btn-clear-urls').addEventListener('click', clearAllUrls);
+
+  // 포스팅 시작/중지
+  $('btn-run-start').addEventListener('click', startPosting);
+  $('btn-run-stop').addEventListener('click', stopPosting);
+
+  // 설정 저장
+  $('btn-save-naver').addEventListener('click', saveNaverCreds);
+  $('btn-save-gemini').addEventListener('click', saveGeminiCreds);
+  $('btn-save-naver-api').addEventListener('click', saveNaverApiCreds);
+
+  // 로그 필터
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => setLogFilter(btn.dataset.level));
+  });
+
+  // 로그 저장/지우기
+  $('btn-log-save').addEventListener('click', saveLogs);
+  $('btn-log-clear').addEventListener('click', clearLogs);
+}
+
+/* ═══════════════════════════════════════════════════════
+   초기화
+═══════════════════════════════════════════════════════ */
+document.addEventListener('DOMContentLoaded', () => {
+  bindEvents();
+  initPwToggles();
+  initPersonaBtns();
+  renderUrlList();
+  loadCredentials();
+
+  // 로그 탭 활성화 시 폴링 시작, 비활성 시 중지
+  const logNavBtn = document.querySelector('.nav-item[data-panel="log"]');
+  if (logNavBtn) {
+    logNavBtn.addEventListener('click', () => {
+      if (!isRunning) {
+        logTimer = setInterval(pollLogs, 2000);
+        pollLogs();
+      }
+    });
+  }
+
+  // 로그가 아닌 탭으로 이동 시 로그 폴링 중지 (실행 중이 아닐 때)
+  document.querySelectorAll('.nav-item[data-panel]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (btn.dataset.panel !== 'log' && !isRunning) {
+        clearInterval(logTimer);
+      }
+    });
+  });
+});
+</script>
+
 </body>
 </html>
