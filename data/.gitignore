@@ -1,0 +1,4 @@
+*.enc
+.secret_key
+images/
+app.log

@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+data/*.enc
+data/.secret_key
+data/images/
+data/app.log
+*.log
+.DS_Store
