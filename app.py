@@ -8,7 +8,7 @@ from flask_cors import CORS
 from core.credential_manager import CredentialManager
 from core.smartstore_scraper import SmartStoreScraper
 from core.gemini_writer import GeminiWriter
-from core.blog_poster import BlogPoster
+from core.blog_poster import NaverBlogPoster
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -196,7 +196,7 @@ def _run_posting(urls: list[str]) -> None:
 
     scraper = SmartStoreScraper()
     writer = GeminiWriter(api_key=gemini_key)
-    poster = BlogPoster()
+    poster = NaverBlogPoster()
 
     try:
         for idx, url in enumerate(urls):
@@ -248,14 +248,18 @@ def _run_posting(urls: list[str]) -> None:
             # 4. 블로그 게시
             _update_status('블로그에 게시 중...', idx, total, url)
             try:
-                poster.login(naver_id, naver_pw)
-                post_url = poster.post_to_blog(
+                if not poster.login(naver_id, naver_pw):
+                    raise RuntimeError('네이버 로그인 실패')
+                success = poster.post_to_blog(
                     blog_id=blog_id,
                     title=post['title'],
                     body=post['body'],
+                    tags=post.get('tags', []),
                     image_paths=image_paths,
                 )
-                logger.info(f'게시 완료: {post_url}')
+                if not success:
+                    raise RuntimeError('블로그 게시 실패')
+                logger.info(f'게시 완료: {url}')
             except Exception as e:
                 logger.error(f'블로그 게시 실패 ({url}): {e}')
                 continue

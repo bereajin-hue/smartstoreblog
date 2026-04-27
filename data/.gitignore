@@ -2,3 +2,5 @@
 .secret_key
 images/
 app.log
+session_cookies.pkl
+*.png
