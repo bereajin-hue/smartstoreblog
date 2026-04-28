@@ -18,8 +18,15 @@ logger = get_logger(__name__)
 
 _DATA_DIR = os.path.join(os.path.dirname(__file__), '..', 'data')
 _COOKIE_PATH = os.path.join(_DATA_DIR, 'session_cookies.pkl')
-_LOGIN_URL = 'https://nid.naver.com/nidlogin.login'
+_LOGIN_URL      = 'https://nid.naver.com/nidlogin.login'
 _BLOG_WRITE_URL = 'https://blog.naver.com/{blog_id}/postwrite'
+
+# 스마트에디터 ONE CSS 셀렉터
+_SEL_TITLE   = '.se-title-input'
+_SEL_BODY    = '.se-main-container'
+_SEL_TAG     = '.se-tag-input'
+_SEL_PUBLISH = 'button.publish_btn__c2BTq, button[class*="publish_btn"], .se-publish-btn'
+_SEL_CONFIRM = 'button.confirm_btn__lzR-E, button[class*="confirm_btn"]'
 
 
 class NaverBlogPoster:
@@ -121,9 +128,9 @@ class NaverBlogPoster:
             self._driver.get(_BLOG_WRITE_URL.format(blog_id=blog_id))
             time.sleep(3)
 
-            # 2. 스마트에디터 ONE iframe 진입
+            # 2. 스마트에디터 ONE iframe 진입 — 에디터 본문이 실제로 렌더될 때까지 대기
             wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'mainFrame')))
-            time.sleep(2)
+            wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, _SEL_BODY)))
 
             # 3. 제목 입력
             self._input_title(wait, title)
@@ -199,9 +206,7 @@ class NaverBlogPoster:
 
     def _input_title(self, wait: WebDriverWait, title: str) -> None:
         try:
-            el = wait.until(EC.element_to_be_clickable(
-                (By.CSS_SELECTOR, '.se-title-input, [placeholder*="제목"]')
-            ))
+            el = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, _SEL_TITLE)))
             el.click()
             el.send_keys(title)
             logger.info('제목 입력 완료')
@@ -210,11 +215,8 @@ class NaverBlogPoster:
 
     def _input_body(self, wait: WebDriverWait, body: str) -> None:
         try:
-            el = wait.until(EC.element_to_be_clickable(
-                (By.CSS_SELECTOR, '.se-content .se-component-content, .se-main-container')
-            ))
+            el = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, _SEL_BODY)))
             el.click()
-            # innerHTML로 줄바꿈 보존
             html_body = body.replace('\n', '<br>')
             self._driver.execute_script(
                 "arguments[0].innerHTML = arguments[1]", el, html_body
@@ -239,7 +241,7 @@ class NaverBlogPoster:
     def _input_tags(self, wait: WebDriverWait, tags: list) -> None:
         try:
             tag_input = wait.until(EC.element_to_be_clickable(
-                (By.CSS_SELECTOR, '.se-tag-input, [placeholder*="태그"]')
+                (By.CSS_SELECTOR, _SEL_TAG)
             ))
             for tag in tags[:10]:
                 tag_input.click()
@@ -255,26 +257,19 @@ class NaverBlogPoster:
         try:
             # 발행 버튼
             publish_btn = wait.until(EC.element_to_be_clickable(
-                (By.CSS_SELECTOR,
-                 '.publish_btn, .btn_publish, '
-                 '[data-log-click*="publish"], button.se-publish-btn')
+                (By.CSS_SELECTOR, _SEL_PUBLISH)
             ))
             publish_btn.click()
             time.sleep(2)
 
-            # 확인 모달
+            # 발행 확인 모달 (있을 때만)
             try:
-                confirm_btn = WebDriverWait(self._driver, 10).until(
-                    EC.element_to_be_clickable(
-                        (By.CSS_SELECTOR,
-                         '.btn_confirm, .confirm, '
-                         '[class*="confirm"], [class*="publish"] button')
-                    )
+                confirm_btn = WebDriverWait(self._driver, 8).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, _SEL_CONFIRM))
                 )
                 confirm_btn.click()
             except TimeoutException:
-                # 모달 없이 바로 발행되는 케이스
-                pass
+                pass  # 모달 없이 바로 발행되는 케이스
 
             time.sleep(3)
             logger.info(f'포스팅 발행 완료: {self._driver.current_url}')
