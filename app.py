@@ -203,7 +203,6 @@ def _run_posting(urls: list[str]) -> None:
 
     scraper = SmartStoreScraper()
     writer = GeminiWriter(api_key=gemini_key)
-    poster = NaverBlogPoster()
 
     try:
         for idx, url in enumerate(urls):
@@ -252,9 +251,13 @@ def _run_posting(urls: list[str]) -> None:
             if posting_job['stop_event'].is_set():
                 break
 
-            # 4. 블로그 게시
+            # 4. 블로그 게시 (URL마다 새 Chrome 인스턴스)
             _update_status('블로그에 게시 중...', idx, total, url)
+            poster = None
             try:
+                logger.info('Chrome 브라우저를 시작합니다... (잠시 기다려 주세요)')
+                poster = NaverBlogPoster()
+                logger.info('Chrome 브라우저 시작 완료')
                 if not poster.login(naver_id, naver_pw):
                     raise RuntimeError('네이버 로그인 실패')
                 success = poster.post_to_blog(
@@ -271,7 +274,8 @@ def _run_posting(urls: list[str]) -> None:
                 logger.error(f'블로그 게시 실패 ({url}): {e}')
                 continue
             finally:
-                poster.quit()
+                if poster is not None:
+                    poster.quit()
 
             posting_job['done_count'] = idx + 1
             _update_status(f'{idx + 1}번째 포스팅 완료', idx + 1, total, url)

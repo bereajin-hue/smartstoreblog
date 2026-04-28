@@ -46,11 +46,16 @@ class NaverBlogPoster:
         options.add_argument('--disable-dev-shm-usage')
         # headless=False: 캡차/2차인증을 사용자가 브라우저에서 직접 처리
 
-        service = Service(ChromeDriverManager().install())
+        logger.info('ChromeDriver 설치/확인 중... (최초 실행 시 다운로드로 1~2분 소요)')
+        driver_path = ChromeDriverManager().install()
+        logger.info(f'ChromeDriver 준비 완료: {driver_path}')
+
+        service = Service(driver_path)
         self._driver = webdriver.Chrome(service=service, options=options)
         self._driver.execute_script(
             "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
         )
+        logger.info('Chrome 브라우저 실행 완료')
 
         # 세션 쿠키 자동 로드
         if os.path.exists(_COOKIE_PATH):
