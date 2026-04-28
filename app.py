@@ -47,13 +47,16 @@ def index():
 @app.route('/api/credentials/save', methods=['POST'])
 def credentials_save():
     try:
-        data = request.get_json(force=True) or {}
-        required = ['naver_id', 'naver_pw', 'blog_id', 'gemini_key']
-        for field in required:
-            if field not in data:
-                return jsonify({'success': False, 'error': f'필수 항목 누락: {field}'}), 400
-        CredentialManager().save(data)
-        logger.info('자격증명 저장 완료')
+        new_data = request.get_json(force=True) or {}
+        if not new_data:
+            return jsonify({'success': False, 'error': '요청 데이터가 없습니다.'}), 400
+
+        # 기존 값에 새 값을 병합 (카드별 개별 저장 지원)
+        cm = CredentialManager()
+        existing = cm.load()
+        existing.update({k: v for k, v in new_data.items() if v})
+        cm.save(existing)
+        logger.info(f'자격증명 저장 완료: {list(new_data.keys())}')
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f'자격증명 저장 오류: {e}')

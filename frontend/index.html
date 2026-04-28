@@ -1738,21 +1738,34 @@ async function saveNaverCreds() {
   const blogId = $('cfg-blog-id').value.trim();
   if (!id || !pw || !blogId) { toast('아이디, 비밀번호, 블로그 ID를 모두 입력하세요.', 'warning'); return; }
 
-  const existing = await safeFetchCreds();
-  await saveAllCreds({ ...existing, naver_id: id, naver_pw: pw, blog_id: blogId });
-  setSettingsBadge('settings-naver-status', true);
-  setLoginBadge(true, id);
-  toast('네이버 계정이 저장됐습니다.', 'ok');
+  try {
+    // 자기 필드만 전송 — 서버가 기존 값에 병합
+    await apiFetch('/api/credentials/save', {
+      method: 'POST',
+      body: JSON.stringify({ naver_id: id, naver_pw: pw, blog_id: blogId }),
+    });
+    setSettingsBadge('settings-naver-status', true);
+    setLoginBadge(true, id);
+    toast('네이버 계정이 저장됐습니다.', 'ok');
+  } catch (e) {
+    toast(`저장 실패: ${e.message}`, 'error');
+  }
 }
 
 async function saveGeminiCreds() {
   const key = $('cfg-gemini-key').value.trim();
   if (!key) { toast('Gemini API Key를 입력하세요.', 'warning'); return; }
 
-  const existing = await safeFetchCreds();
-  await saveAllCreds({ ...existing, gemini_key: key });
-  setSettingsBadge('settings-gemini-status', true);
-  toast('Gemini API Key가 저장됐습니다.', 'ok');
+  try {
+    await apiFetch('/api/credentials/save', {
+      method: 'POST',
+      body: JSON.stringify({ gemini_key: key }),
+    });
+    setSettingsBadge('settings-gemini-status', true);
+    toast('Gemini API Key가 저장됐습니다.', 'ok');
+  } catch (e) {
+    toast(`저장 실패: ${e.message}`, 'error');
+  }
 }
 
 async function saveNaverApiCreds() {
@@ -1760,17 +1773,15 @@ async function saveNaverApiCreds() {
   const clientSecret = $('cfg-naver-client-secret').value.trim();
   if (!clientId || !clientSecret) { toast('Client ID와 Secret을 입력하세요.', 'warning'); return; }
 
-  const existing = await safeFetchCreds();
-  await saveAllCreds({ ...existing, naver_client_id: clientId, naver_client_secret: clientSecret });
-  toast('네이버 Open API 키가 저장됐습니다.', 'ok');
-}
-
-async function safeFetchCreds() {
-  try { return await apiFetch('/api/credentials/load'); } catch { return {}; }
-}
-
-async function saveAllCreds(data) {
-  await apiFetch('/api/credentials/save', { method: 'POST', body: JSON.stringify(data) });
+  try {
+    await apiFetch('/api/credentials/save', {
+      method: 'POST',
+      body: JSON.stringify({ naver_client_id: clientId, naver_client_secret: clientSecret }),
+    });
+    toast('네이버 Open API 키가 저장됐습니다.', 'ok');
+  } catch (e) {
+    toast(`저장 실패: ${e.message}`, 'error');
+  }
 }
 
 /* ═══════════════════════════════════════════════════════
