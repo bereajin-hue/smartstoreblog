@@ -6,11 +6,9 @@ from datetime import datetime
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
-from webdriver_manager.chrome import ChromeDriverManager
 
 from utils.logger import get_logger
 
@@ -46,12 +44,8 @@ class NaverBlogPoster:
         options.add_argument('--disable-dev-shm-usage')
         # headless=False: 캡차/2차인증을 사용자가 브라우저에서 직접 처리
 
-        logger.info('ChromeDriver 설치/확인 중... (최초 실행 시 다운로드로 1~2분 소요)')
-        driver_path = ChromeDriverManager().install()
-        logger.info(f'ChromeDriver 준비 완료: {driver_path}')
-
-        service = Service(driver_path)
-        self._driver = webdriver.Chrome(service=service, options=options)
+        logger.info('Chrome 브라우저 시작 중... (selenium-manager 자동 관리)')
+        self._driver = webdriver.Chrome(options=options)  # selenium-manager 자동 관리
         self._driver.execute_script(
             "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
         )
