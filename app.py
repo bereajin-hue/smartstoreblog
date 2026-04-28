@@ -283,6 +283,10 @@ def _run_posting(urls: list[str]) -> None:
     except Exception as e:
         logger.error(f'포스팅 워커 예외: {e}')
     finally:
+        try:
+            scraper.quit()
+        except Exception:
+            pass
         posting_job['running'] = False
         posting_job['progress'] = 100 if posting_job['done_count'] == total else posting_job['progress']
         posting_job['step'] = '완료' if not posting_job['stop_event'].is_set() else '중단됨'
