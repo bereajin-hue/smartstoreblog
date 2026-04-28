@@ -1,10 +1,8 @@
-import io
 import os
 import re
 import requests
 from bs4 import BeautifulSoup
-from PIL import Image
-from urllib.parse import urlparse, unquote
+from urllib.parse import urlparse
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -45,7 +43,7 @@ class SmartStoreScraper:
             logger.error(f'상품 페이지 요청 실패: {e}')
             raise
 
-        soup = BeautifulSoup(resp.text, 'lxml')
+        soup = BeautifulSoup(resp.text, 'html.parser')
 
         try:
             product = {
@@ -77,29 +75,43 @@ class SmartStoreScraper:
         save_dir = os.path.join(_IMAGE_BASE, safe_name)
         os.makedirs(save_dir, exist_ok=True)
 
+        _CONTENT_TYPE_EXT = {
+            'image/jpeg': 'jpg',
+            'image/png':  'png',
+            'image/webp': 'webp',
+            'image/gif':  'gif',
+        }
+
         paths: list[str] = []
         for i, url in enumerate(image_urls[:3]):
             try:
                 resp = self._session.get(url, timeout=10)
                 resp.raise_for_status()
 
-                # Pillow 유효성 검사
-                img = Image.open(io.BytesIO(resp.content))
-                img.verify()
+                # Content-Type으로 확장자 결정 (Pillow 불필요)
+                ct = resp.headers.get('Content-Type', '').split(';')[0].strip().lower()
+                if ct not in _CONTENT_TYPE_EXT:
+                    # Content-Type 없으면 URL 끝에서 추측
+                    ct = self._guess_ct(url)
+                ext = _CONTENT_TYPE_EXT.get(ct, 'jpg')
 
-                # verify() 후 다시 열어야 저장 가능
-                img = Image.open(io.BytesIO(resp.content))
-                ext = img.format.lower() if img.format else 'jpg'
-                ext = 'jpg' if ext == 'jpeg' else ext
                 filename = f'{i:02d}.{ext}'
                 path = os.path.join(save_dir, filename)
-                img.save(path)
+                with open(path, 'wb') as f:
+                    f.write(resp.content)
                 paths.append(path)
                 logger.info(f'이미지 저장: {path}')
             except Exception as e:
                 logger.warning(f'이미지 다운로드 실패 ({url}): {e}')
 
         return paths
+
+    def _guess_ct(self, url: str) -> str:
+        lower = url.lower().split('?')[0]
+        if lower.endswith('.png'):  return 'image/png'
+        if lower.endswith('.webp'): return 'image/webp'
+        if lower.endswith('.gif'):  return 'image/gif'
+        return 'image/jpeg'
 
     # ── 파싱 헬퍼 ─────────────────────────────────────────────────────────────
 
