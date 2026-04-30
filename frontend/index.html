@@ -1732,18 +1732,20 @@ async function loadCredentials() {
   }
 }
 
+const MASK = '••••••••';
+
 async function saveNaverCreds() {
   const id     = $('cfg-naver-id').value.trim();
   const pw     = $('cfg-naver-pw').value;
   const blogId = $('cfg-blog-id').value.trim();
   if (!id || !pw || !blogId) { toast('아이디, 비밀번호, 블로그 ID를 모두 입력하세요.', 'warning'); return; }
 
+  // 마스킹 값이 그대로면 비밀번호를 전송 제외 — 재저장 시 실제 비밀번호 오염 방지
+  const payload = { naver_id: id, blog_id: blogId };
+  if (pw !== MASK) payload.naver_pw = pw;
+
   try {
-    // 자기 필드만 전송 — 서버가 기존 값에 병합
-    await apiFetch('/api/credentials/save', {
-      method: 'POST',
-      body: JSON.stringify({ naver_id: id, naver_pw: pw, blog_id: blogId }),
-    });
+    await apiFetch('/api/credentials/save', { method: 'POST', body: JSON.stringify(payload) });
     setSettingsBadge('settings-naver-status', true);
     setLoginBadge(true, id);
     toast('네이버 계정이 저장됐습니다.', 'ok');
@@ -1755,12 +1757,10 @@ async function saveNaverCreds() {
 async function saveGeminiCreds() {
   const key = $('cfg-gemini-key').value.trim();
   if (!key) { toast('Gemini API Key를 입력하세요.', 'warning'); return; }
+  if (key === MASK) { toast('새 API 키를 입력하세요.', 'warning'); return; }
 
   try {
-    await apiFetch('/api/credentials/save', {
-      method: 'POST',
-      body: JSON.stringify({ gemini_key: key }),
-    });
+    await apiFetch('/api/credentials/save', { method: 'POST', body: JSON.stringify({ gemini_key: key }) });
     setSettingsBadge('settings-gemini-status', true);
     toast('Gemini API Key가 저장됐습니다.', 'ok');
   } catch (e) {
@@ -1773,11 +1773,11 @@ async function saveNaverApiCreds() {
   const clientSecret = $('cfg-naver-client-secret').value.trim();
   if (!clientId || !clientSecret) { toast('Client ID와 Secret을 입력하세요.', 'warning'); return; }
 
+  const payload = { naver_client_id: clientId };
+  if (clientSecret !== MASK) payload.naver_client_secret = clientSecret;
+
   try {
-    await apiFetch('/api/credentials/save', {
-      method: 'POST',
-      body: JSON.stringify({ naver_client_id: clientId, naver_client_secret: clientSecret }),
-    });
+    await apiFetch('/api/credentials/save', { method: 'POST', body: JSON.stringify(payload) });
     toast('네이버 Open API 키가 저장됐습니다.', 'ok');
   } catch (e) {
     toast(`저장 실패: ${e.message}`, 'error');
@@ -2104,11 +2104,12 @@ document.addEventListener('DOMContentLoaded', () => {
   renderUrlList();
   loadCredentials();
 
-  // 로그 탭 활성화 시 폴링 시작, 비활성 시 중지
+  // 로그 탭 활성화 시 폴링 시작 (기존 타이머 먼저 정리해 중복 방지)
   const logNavBtn = document.querySelector('.nav-item[data-panel="log"]');
   if (logNavBtn) {
     logNavBtn.addEventListener('click', () => {
       if (!isRunning) {
+        clearInterval(logTimer);
         logTimer = setInterval(pollLogs, 2000);
         pollLogs();
       }
@@ -2120,6 +2121,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.addEventListener('click', () => {
       if (btn.dataset.panel !== 'log' && !isRunning) {
         clearInterval(logTimer);
+        logTimer = null;
       }
     });
   });

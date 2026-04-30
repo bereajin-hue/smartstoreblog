@@ -7,6 +7,7 @@ from selenium import webdriver
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
@@ -245,7 +246,6 @@ class NaverBlogPoster:
             for tag in tags[:10]:
                 tag_input.click()
                 tag_input.send_keys(tag)
-                from selenium.webdriver.common.keys import Keys
                 tag_input.send_keys(Keys.RETURN)
                 time.sleep(0.3)
             logger.info(f'태그 {len(tags)}개 입력 완료')

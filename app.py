@@ -68,7 +68,7 @@ def credentials_load():
     try:
         creds = CredentialManager().load()
         masked = {
-            k: ('••••••••' if 'pw' in k.lower() or 'password' in k.lower() or k == 'gemini_key' else v)
+            k: ('••••••••' if any(w in k.lower() for w in ('pw', 'password', 'secret', 'key')) else v)
             for k, v in creds.items()
         }
         return jsonify(masked)
@@ -201,10 +201,18 @@ def _run_posting(urls: list[str]) -> None:
     blog_id = creds.get('blog_id', '')
     gemini_key = creds.get('gemini_key', '')
 
-    scraper = SmartStoreScraper()
-    writer = GeminiWriter(api_key=gemini_key)
-
+    scraper = None
     try:
+        # 자격증명 사전 검증
+        missing = [k for k, v in [('네이버 ID', naver_id), ('비밀번호', naver_pw),
+                                   ('블로그 ID', blog_id), ('Gemini 키', gemini_key)] if not v]
+        if missing:
+            logger.error(f'자격증명 미설정: {", ".join(missing)} — 설정 탭에서 저장하세요.')
+            return
+
+        scraper = SmartStoreScraper()
+        writer = GeminiWriter(api_key=gemini_key)
+
         for idx, url in enumerate(urls):
             if posting_job['stop_event'].is_set():
                 logger.info('포스팅 중단됨 (사용자 요청)')
@@ -283,10 +291,11 @@ def _run_posting(urls: list[str]) -> None:
     except Exception as e:
         logger.error(f'포스팅 워커 예외: {e}')
     finally:
-        try:
-            scraper.quit()
-        except Exception:
-            pass
+        if scraper is not None:
+            try:
+                scraper.quit()
+            except Exception:
+                pass
         posting_job['running'] = False
         posting_job['progress'] = 100 if posting_job['done_count'] == total else posting_job['progress']
         posting_job['step'] = '완료' if not posting_job['stop_event'].is_set() else '중단됨'
