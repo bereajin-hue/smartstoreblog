@@ -8,7 +8,7 @@ from flask_cors import CORS
 
 from core.credential_manager import CredentialManager
 from core.smartstore_scraper import SmartStoreScraper
-from core.gemini_writer import GeminiWriter
+from core.claude_writer import ClaudeWriter
 from core.blog_poster import NaverBlogPoster
 from utils.logger import get_logger
 
@@ -199,19 +199,19 @@ def _run_posting(urls: list[str]) -> None:
     naver_id = creds.get('naver_id', '')
     naver_pw = creds.get('naver_pw', '')
     blog_id = creds.get('blog_id', '')
-    gemini_key = creds.get('gemini_key', '')
+    claude_key = creds.get('claude_key', '')
 
     scraper = None
     try:
         # 자격증명 사전 검증
         missing = [k for k, v in [('네이버 ID', naver_id), ('비밀번호', naver_pw),
-                                   ('블로그 ID', blog_id), ('Gemini 키', gemini_key)] if not v]
+                                   ('블로그 ID', blog_id), ('Claude API 키', claude_key)] if not v]
         if missing:
             logger.error(f'자격증명 미설정: {", ".join(missing)} — 설정 탭에서 저장하세요.')
             return
 
         scraper = SmartStoreScraper()
-        writer = GeminiWriter(api_key=gemini_key)
+        writer = ClaudeWriter(api_key=claude_key)
 
         for idx, url in enumerate(urls):
             if posting_job['stop_event'].is_set():

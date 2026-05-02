@@ -988,7 +988,7 @@
     </nav>
 
     <div class="sidebar-footer">
-      <div class="sidebar-version">v1.0.0 &nbsp;·&nbsp; Flask + Gemini</div>
+      <div class="sidebar-version">v1.0.0 &nbsp;·&nbsp; Flask + Claude</div>
     </div>
 
   </aside>
@@ -1246,7 +1246,7 @@
               <div class="step-item" id="step-gemini">
                 <div class="step-circle">3</div>
                 <div class="step-info">
-                  <div class="step-name">Gemini 포스팅 생성</div>
+                  <div class="step-name">Claude 포스팅 생성</div>
                   <div class="step-desc">AI가 블로그 제목·본문·태그 작성</div>
                 </div>
               </div>
@@ -1425,13 +1425,13 @@
           </div>
         </div>
 
-        <!-- Gemini API 카드 -->
+        <!-- Claude API 카드 -->
         <div class="card mb-16">
           <div class="card-header">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
               <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
             </svg>
-            <span class="card-header-title">Gemini API</span>
+            <span class="card-header-title">Claude API</span>
             <span id="settings-gemini-status" class="login-badge logged-out ml-auto" style="font-size:11px; padding:3px 10px;">
               <span class="login-dot"></span>
               <span>미저장</span>
@@ -1439,12 +1439,12 @@
           </div>
           <div class="card-body">
             <div class="form-group mb-16">
-              <label for="cfg-gemini-key">Gemini API Key</label>
+              <label for="cfg-gemini-key">Claude API Key</label>
               <div style="position:relative;">
                 <input
                   type="password"
                   id="cfg-gemini-key"
-                  placeholder="AIzaSy..."
+                  placeholder="sk-ant-..."
                   autocomplete="off"
                   class="font-mono"
                   style="padding-right:40px;"
@@ -1462,7 +1462,7 @@
                 </button>
               </div>
               <p class="text-sm text-muted" style="margin-top:6px;">
-                Google AI Studio에서 발급받은 API 키를 입력하세요.
+                Anthropic Console에서 발급받은 API 키를 입력하세요.
               </p>
             </div>
             <div style="display:flex; justify-content:flex-end;">
@@ -1718,14 +1718,14 @@ async function loadCredentials() {
     if (data.naver_id)            $('cfg-naver-id').value  = data.naver_id;
     if (data.naver_pw)            $('cfg-naver-pw').value  = data.naver_pw;
     if (data.blog_id)             $('cfg-blog-id').value   = data.blog_id;
-    if (data.gemini_key)          $('cfg-gemini-key').value = data.gemini_key;
+    if (data.claude_key)          $('cfg-gemini-key').value = data.claude_key;
     if (data.naver_client_id)     $('cfg-naver-client-id').value     = data.naver_client_id;
     if (data.naver_client_secret) $('cfg-naver-client-secret').value = data.naver_client_secret;
 
     const hasNaver  = !!(data.naver_id && data.naver_pw && data.blog_id);
-    const hasGemini = !!data.gemini_key;
+    const hasClaude = !!data.claude_key;
     setSettingsBadge('settings-naver-status',  hasNaver);
-    setSettingsBadge('settings-gemini-status', hasGemini);
+    setSettingsBadge('settings-gemini-status', hasClaude);
     setLoginBadge(hasNaver, data.naver_id || '');
   } catch (e) {
     // 서버가 아직 없을 경우 조용히 무시
@@ -1756,13 +1756,13 @@ async function saveNaverCreds() {
 
 async function saveGeminiCreds() {
   const key = $('cfg-gemini-key').value.trim();
-  if (!key) { toast('Gemini API Key를 입력하세요.', 'warning'); return; }
+  if (!key) { toast('Claude API Key를 입력하세요.', 'warning'); return; }
   if (key === MASK) { toast('새 API 키를 입력하세요.', 'warning'); return; }
 
   try {
-    await apiFetch('/api/credentials/save', { method: 'POST', body: JSON.stringify({ gemini_key: key }) });
+    await apiFetch('/api/credentials/save', { method: 'POST', body: JSON.stringify({ claude_key: key }) });
     setSettingsBadge('settings-gemini-status', true);
-    toast('Gemini API Key가 저장됐습니다.', 'ok');
+    toast('Claude API Key가 저장됐습니다.', 'ok');
   } catch (e) {
     toast(`저장 실패: ${e.message}`, 'error');
   }
